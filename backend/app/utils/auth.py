@@ -5,6 +5,7 @@ JWT token handling and user authentication
 
 from datetime import datetime, timedelta
 from typing import Optional
+from uuid import UUID
 from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -83,17 +84,17 @@ async def get_current_user(
 
 async def get_current_user_id(
     current_user: dict = Depends(get_current_user)
-) -> str:
+) -> UUID:
     """
-    Get current user ID
+    Get current user ID as UUID
     
     Args:
         current_user: Current authenticated user
     
     Returns:
-        User ID as string
+        User ID as UUID
     """
-    return str(current_user["id"])
+    return UUID(current_user["id"])
 
 
 def verify_supabase_token(token: str) -> Optional[dict]:

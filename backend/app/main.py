@@ -8,7 +8,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from app.config import settings
-from app.api import auth_router, health_router
+from app.api import (
+    auth_router,
+    health_router,
+    job_descriptions_router,
+    cvs_router,
+    tickets_router,
+    interviews_router
+)
 from app.utils.errors import (
     app_exception_handler,
     validation_exception_handler,
@@ -98,6 +105,10 @@ async def root():
 # Include API routers
 app.include_router(auth_router)
 app.include_router(health_router)
+app.include_router(job_descriptions_router)
+app.include_router(cvs_router)
+app.include_router(tickets_router)
+app.include_router(interviews_router)
 
 if __name__ == "__main__":
     import uvicorn

@@ -64,7 +64,8 @@ class JobDescriptionService:
             NotFoundError: If job not found or not owned by recruiter
         """
         try:
-            response = db.client.table("job_descriptions").select("*").eq("id", str(job_id)).eq("recruiter_id", str(recruiter_id)).execute()
+            # Use service client to bypass RLS (we're filtering by recruiter_id in application layer)
+            response = db.service_client.table("job_descriptions").select("*").eq("id", str(job_id)).eq("recruiter_id", str(recruiter_id)).execute()
             
             if not response.data:
                 raise NotFoundError("Job description", str(job_id))
@@ -97,7 +98,8 @@ class JobDescriptionService:
             List of job descriptions
         """
         try:
-            query = db.client.table("job_descriptions").select("*").eq("recruiter_id", str(recruiter_id))
+            # Use service client to bypass RLS (we're filtering by recruiter_id in application layer)
+            query = db.service_client.table("job_descriptions").select("*").eq("recruiter_id", str(recruiter_id))
             
             if is_active is not None:
                 query = query.eq("is_active", is_active)

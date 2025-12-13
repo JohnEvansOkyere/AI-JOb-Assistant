@@ -176,8 +176,8 @@ class TicketService:
             List of tickets
         """
         try:
-            # Verify recruiter owns the job
-            job = db.client.table("job_descriptions").select("id").eq("id", str(job_description_id)).eq("recruiter_id", str(recruiter_id)).execute()
+            # Verify recruiter owns the job (use service client to bypass RLS)
+            job = db.service_client.table("job_descriptions").select("id").eq("id", str(job_description_id)).eq("recruiter_id", str(recruiter_id)).execute()
             
             if not job.data:
                 raise NotFoundError("Job description", str(job_description_id))

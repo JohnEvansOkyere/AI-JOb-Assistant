@@ -35,6 +35,7 @@ export default function JobsPage() {
   const loadJobs = async () => {
     try {
       setLoading(true)
+      setError('')
       const token = localStorage.getItem('auth_token')
       if (token) {
         apiClient.setToken(token)
@@ -46,7 +47,9 @@ export default function JobsPage() {
         setError(response.message || 'Failed to load jobs')
       }
     } catch (err: any) {
-      setError(err.message || 'An error occurred')
+      console.error('Error loading jobs:', err)
+      const errorMessage = err.response?.detail || err.message || 'An error occurred while loading jobs'
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -78,6 +81,9 @@ export default function JobsPage() {
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => router.push('/dashboard')}>
               Back to Dashboard
+            </Button>
+            <Button variant="secondary" onClick={loadJobs} disabled={loading}>
+              {loading ? 'Loading...' : 'Refresh'}
             </Button>
             <Button variant="primary" onClick={() => router.push('/dashboard/jobs/new')}>
               Create New Job

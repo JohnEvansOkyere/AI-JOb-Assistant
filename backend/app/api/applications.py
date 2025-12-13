@@ -202,6 +202,8 @@ async def list_all_applications(
         jobs = db.service_client.table("job_descriptions").select("id").eq("recruiter_id", str(recruiter_id)).execute()
         job_ids = [job["id"] for job in (jobs.data or [])]
         
+        logger.info("Fetching applications", recruiter_id=str(recruiter_id), job_count=len(job_ids), job_ids=job_ids[:3] if job_ids else [])
+        
         if not job_ids:
             return Response(
                 success=True,
@@ -210,7 +212,7 @@ async def list_all_applications(
             )
         
         # Get all applications for these jobs
-        # Fetch applications first
+        # Fetch applications first - Applications page reads from job_applications table
         query = db.service_client.table("job_applications").select("*").in_("job_description_id", job_ids)
         
         if status:
@@ -220,7 +222,15 @@ async def list_all_applications(
         applications_response = query.execute()
         applications_data = applications_response.data or []
         
+        logger.info("Found applications in job_applications table", 
+                   application_count=len(applications_data),
+                   job_ids=job_ids[:3] if job_ids else [])
+        
         if not applications_data:
+            logger.warning("No applications found in job_applications table", 
+                          recruiter_id=str(recruiter_id),
+                          job_ids=job_ids,
+                          note="This means applications were not created when candidates submitted forms")
             return Response(
                 success=True,
                 message="Applications retrieved successfully",

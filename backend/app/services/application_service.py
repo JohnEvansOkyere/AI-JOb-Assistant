@@ -117,11 +117,20 @@ class ApplicationService:
                 logger.error("Application insert returned no data", application_dict=application_dict)
                 raise NotFoundError("Job application", "creation failed - no data returned")
             
+            # Fetch the full record to ensure we have created_at and updated_at timestamps
+            # Supabase insert might not return all fields, especially timestamps
+            application_id = response.data[0]["id"]
+            full_record = db.service_client.table("job_applications").select("*").eq("id", application_id).execute()
+            
+            if not full_record.data:
+                logger.error("Failed to fetch full application record after insert", application_id=application_id)
+                raise NotFoundError("Job application", "creation failed - could not fetch full record")
+            
             logger.info("Application created successfully", 
-                       application_id=response.data[0]["id"], 
+                       application_id=full_record.data[0]["id"], 
                        job_id=str(application_data.job_description_id),
                        candidate_id=str(candidate_id))
-            return response.data[0]
+            return full_record.data[0]
             
         except Exception as e:
             logger.error("Error creating application", error=str(e), exc_info=True, 

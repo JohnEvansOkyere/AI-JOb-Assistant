@@ -134,9 +134,16 @@ async def list_candidates(
             candidates_map[candidate_id]["total_applications"] += 1
             
             # Track latest application
-            if not candidates_map[candidate_id]["latest_application"] or \
-               (app.get("applied_at") and app.get("applied_at") > candidates_map[candidate_id]["latest_application"].get("applied_at", "")):
+            current_latest = candidates_map[candidate_id]["latest_application"]
+            current_applied_at = app.get("applied_at")
+            
+            if not current_latest:
                 candidates_map[candidate_id]["latest_application"] = application_info
+            elif current_applied_at:
+                # Compare dates - handle None values
+                latest_applied_at = current_latest.get("applied_at")
+                if not latest_applied_at or (current_applied_at > latest_applied_at):
+                    candidates_map[candidate_id]["latest_application"] = application_info
         
         # Also add candidates who have CVs but no applications yet
         for cv in (cvs_response.data or []):
@@ -178,7 +185,11 @@ async def list_candidates(
         # Convert to list and sort by latest application date
         candidates_list = list(candidates_map.values())
         candidates_list.sort(
-            key=lambda x: x["latest_application"]["applied_at"] if x["latest_application"] else "",
+            key=lambda x: (
+                x["latest_application"]["applied_at"] 
+                if x["latest_application"] and x["latest_application"].get("applied_at")
+                else "1970-01-01T00:00:00Z"  # Use a very old date for None values
+            ),
             reverse=True
         )
         

@@ -3,7 +3,7 @@ Job Description Model
 Pydantic models for job description operations
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
@@ -17,6 +17,14 @@ class JobDescriptionBase(BaseModel):
     location: Optional[str] = None
     employment_type: Optional[str] = None  # full-time, part-time, contract, etc.
     experience_level: Optional[str] = None  # junior, mid, senior
+    
+    @field_validator('requirements', 'location', 'employment_type', 'experience_level', mode='before')
+    @classmethod
+    def empty_str_to_none(cls, v):
+        """Convert empty strings to None for optional fields"""
+        if v == '':
+            return None
+        return v
 
 
 class JobDescriptionCreate(JobDescriptionBase):

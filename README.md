@@ -37,6 +37,13 @@ AI-JOb-Assistant/
 
 See individual phase documentation in `docs/` directory.
 
+## Important Documentation
+
+- **[Errors and Solutions](./docs/ERRORS_AND_SOLUTIONS.md)** - Troubleshooting guide for common errors
+- [Phase Documentation](./docs/PHASES.md) - Development phases overview
+- [Architecture](./docs/ARCHITECTURE.md) - System architecture
+- [Deployment Guide](./docs/DEPLOYMENT.md) - Deployment instructions
+
 ## Environment Variables
 
 See `.env.example` files in backend/ and frontend/ directories.

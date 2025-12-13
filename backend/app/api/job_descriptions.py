@@ -40,10 +40,15 @@ async def create_job_description(
             data=job
         )
     except Exception as e:
-        logger.error("Error creating job description", error=str(e))
+        error_msg = str(e)
+        logger.error("Error creating job description", error=error_msg, recruiter_id=str(recruiter_id))
+        # Return more detailed error information
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            detail={
+                "message": "Failed to create job description",
+                "error": error_msg
+            }
         )
 
 

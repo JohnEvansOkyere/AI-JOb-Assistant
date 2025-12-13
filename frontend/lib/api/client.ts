@@ -45,8 +45,21 @@ export class ApiClient {
       })
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ message: 'Request failed' }))
-        throw new Error(error.message || `HTTP error! status: ${response.status}`)
+        let error: any
+        try {
+          error = await response.json()
+        } catch {
+          error = { 
+            message: `HTTP error! status: ${response.status}`,
+            detail: `HTTP error! status: ${response.status}`
+          }
+        }
+        // Handle different error response formats
+        const errorMessage = error.detail || (typeof error.detail === 'object' ? error.detail.error || error.detail.message : null) || error.message || `HTTP error! status: ${response.status}`
+        const apiError = new Error(errorMessage)
+        ;(apiError as any).response = error
+        ;(apiError as any).status = response.status
+        throw apiError
       }
 
       return await response.json()

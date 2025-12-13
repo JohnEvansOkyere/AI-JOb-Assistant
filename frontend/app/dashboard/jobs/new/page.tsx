@@ -55,7 +55,17 @@ export default function NewJobPage() {
         apiClient.setToken(token)
       }
 
-      const response = await apiClient.post('/job-descriptions', formData)
+      // Convert empty strings to null for optional fields
+      const payload = {
+        title: formData.title,
+        description: formData.description,
+        requirements: formData.requirements || null,
+        location: formData.location || null,
+        employment_type: formData.employment_type || null,
+        experience_level: formData.experience_level || null,
+      }
+
+      const response = await apiClient.post('/job-descriptions', payload)
       
       if (response.success) {
         router.push('/dashboard/jobs')
@@ -63,7 +73,15 @@ export default function NewJobPage() {
         setError(response.message || 'Failed to create job description')
       }
     } catch (err: any) {
-      setError(err.message || 'An error occurred')
+      console.error('Error creating job:', err)
+      // Try to extract error message from response
+      let errorMessage = 'An error occurred'
+      if (err.message) {
+        errorMessage = err.message
+      } else if (err.response) {
+        errorMessage = err.response.message || JSON.stringify(err.response)
+      }
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }

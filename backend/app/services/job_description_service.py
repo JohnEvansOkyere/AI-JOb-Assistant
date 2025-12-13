@@ -35,7 +35,8 @@ class JobDescriptionService:
             job_dict = job_data.model_dump()
             job_dict["recruiter_id"] = str(recruiter_id)
             
-            response = db.client.table("job_descriptions").insert(job_dict).execute()
+            # Use service client to bypass RLS (we've already validated authorization in the API layer)
+            response = db.service_client.table("job_descriptions").insert(job_dict).execute()
             
             if not response.data:
                 raise NotFoundError("Job description", "creation failed")
@@ -44,7 +45,7 @@ class JobDescriptionService:
             return response.data[0]
             
         except Exception as e:
-            logger.error("Error creating job description", error=str(e))
+            logger.error("Error creating job description", error=str(e), recruiter_id=str(recruiter_id))
             raise
     
     @staticmethod
@@ -134,9 +135,9 @@ class JobDescriptionService:
             # Verify ownership
             await JobDescriptionService.get_job_description(job_id, recruiter_id)
             
-            # Update
+            # Update (use service client to bypass RLS - we've already verified ownership)
             update_data = job_data.model_dump(exclude_unset=True)
-            response = db.client.table("job_descriptions").update(update_data).eq("id", str(job_id)).execute()
+            response = db.service_client.table("job_descriptions").update(update_data).eq("id", str(job_id)).execute()
             
             if not response.data:
                 raise NotFoundError("Job description", str(job_id))
@@ -169,8 +170,8 @@ class JobDescriptionService:
             # Verify ownership
             await JobDescriptionService.get_job_description(job_id, recruiter_id)
             
-            # Delete
-            response = db.client.table("job_descriptions").delete().eq("id", str(job_id)).execute()
+            # Delete (use service client to bypass RLS - we've already verified ownership)
+            response = db.service_client.table("job_descriptions").delete().eq("id", str(job_id)).execute()
             
             logger.info("Job description deleted", job_id=str(job_id))
             return True

@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { apiClient } from '@/lib/api/client'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -93,17 +94,74 @@ export default function JobDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-900">{job.title}</h1>
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">{job.title}</h1>
+            <p className="text-sm text-gray-600 mt-1">Job Description Details</p>
+          </div>
           <Button variant="outline" onClick={() => router.push('/dashboard/jobs')}>
             Back to Jobs
           </Button>
         </div>
-      </header>
 
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Application Link Card - Prominent */}
+        <Card>
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Share Application Link</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Copy and share this link with candidates. They can apply directly using this URL.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                <p className="text-xs text-gray-500 mb-1">Application URL</p>
+                <p className="text-sm font-mono text-gray-900 break-all">
+                  {typeof window !== 'undefined' ? `${window.location.origin}/apply/${job.id}` : 'Loading...'}
+                </p>
+              </div>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  const url = typeof window !== 'undefined' ? `${window.location.origin}/apply/${job.id}` : ''
+                  navigator.clipboard.writeText(url)
+                  alert('Application link copied to clipboard!')
+                }}
+              >
+                Copy Link
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const url = typeof window !== 'undefined' ? `${window.location.origin}/apply/${job.id}` : ''
+                  window.open(url, '_blank')
+                }}
+              >
+                Preview Application Form
+              </Button>
+            </div>
+          </div>
+        </Card>
+        <div className="mb-6 flex gap-2">
+          <Button
+            variant="primary"
+            onClick={() => router.push(`/dashboard/jobs/${jobId}/applications`)}
+          >
+            View Applications
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => router.push(`/dashboard/jobs/${jobId}/form-builder`)}
+          >
+            Customize Application Form
+          </Button>
+        </div>
+
         <Card>
           <div className="space-y-6">
             <div>
@@ -150,8 +208,8 @@ export default function JobDetailPage() {
             </div>
           </div>
         </Card>
-      </main>
-    </div>
+      </div>
+    </DashboardLayout>
   )
 }
 

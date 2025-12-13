@@ -8,6 +8,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { apiClient } from '@/lib/api/client'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -88,14 +89,17 @@ export default function NewJobPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <h1 className="text-2xl font-bold text-gray-900">Create Job Description</h1>
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Create New Job Description</h1>
+            <p className="text-gray-600 mt-1">Fill in the details to create a new job posting</p>
+          </div>
+          <Button variant="outline" onClick={() => router.push('/dashboard/jobs')}>
+            Cancel
+          </Button>
         </div>
-      </header>
-
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Card>
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
@@ -201,8 +205,8 @@ export default function NewJobPage() {
             </div>
           </form>
         </Card>
-      </main>
-    </div>
+      </div>
+    </DashboardLayout>
   )
 }
 

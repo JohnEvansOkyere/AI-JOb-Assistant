@@ -1,0 +1,312 @@
+"""
+CV Screening Service
+AI-powered CV screening and matching against job descriptions
+"""
+
+from typing import Dict, Any, List, Optional
+from uuid import UUID
+from decimal import Decimal
+from app.ai.providers import AIProviderFactory
+from app.ai.prompts import InterviewPrompts
+from app.database import db
+from app.models.cv_screening import CVScreeningResult, CVScreeningResultCreate
+import structlog
+import json
+
+logger = structlog.get_logger()
+
+
+class CVScreeningService:
+    """Service for screening CVs against job descriptions"""
+    
+    def __init__(self, provider_name: Optional[str] = None):
+        """Initialize screening service"""
+        self.provider = AIProviderFactory.create_provider(provider_name)
+        self.prompts = InterviewPrompts()
+    
+    async def screen_cv(
+        self,
+        cv_text: str,
+        job_description: Dict[str, Any],
+        cv_structured: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Screen a CV against a job description
+        
+        Args:
+            cv_text: CV text content
+            job_description: Job description data
+            cv_structured: Optional structured CV data
+        
+        Returns:
+            Screening result dictionary
+        """
+        try:
+            # Generate screening prompt
+            prompt = self._generate_screening_prompt(cv_text, job_description)
+            
+            # Get AI analysis
+            analysis_text = await self.provider.generate_completion(
+                prompt=prompt,
+                system_prompt=self.prompts.SYSTEM_PROMPT,
+                max_tokens=1000,
+                temperature=0.5
+            )
+            
+            # Parse and structure results
+            result = self._parse_screening_result(analysis_text, cv_text, job_description)
+            
+            logger.info("CV screened", match_score=result["match_score"])
+            return result
+            
+        except Exception as e:
+            logger.error("Error screening CV", error=str(e))
+            # Return default result on error
+            return {
+                "match_score": Decimal("50.0"),
+                "skill_match_score": Decimal("50.0"),
+                "experience_match_score": Decimal("50.0"),
+                "qualification_match_score": Decimal("50.0"),
+                "strengths": [],
+                "gaps": ["Unable to complete screening"],
+                "recommendation": "maybe_qualified",
+                "screening_notes": f"Screening error: {str(e)}",
+                "screening_details": {}
+            }
+    
+    def _generate_screening_prompt(
+        self,
+        cv_text: str,
+        job_description: Dict[str, Any]
+    ) -> str:
+        """Generate screening analysis prompt"""
+        return f"""Analyze this candidate's CV against the job description and provide a detailed screening assessment.
+
+Job Description:
+Title: {job_description.get('title', 'N/A')}
+Description: {job_description.get('description', 'N/A')}
+Requirements: {job_description.get('requirements', 'N/A')}
+Experience Level: {job_description.get('experience_level', 'N/A')}
+
+Candidate CV:
+{cv_text[:3000]}
+
+Provide a structured analysis in the following format:
+
+MATCH_SCORE: [0-100] (overall match percentage)
+SKILL_MATCH: [0-100] (skill alignment)
+EXPERIENCE_MATCH: [0-100] (experience alignment)
+QUALIFICATION_MATCH: [0-100] (qualification alignment)
+
+STRENGTHS:
+- [List matched strengths, one per line]
+
+GAPS:
+- [List missing skills/experience, one per line]
+
+RECOMMENDATION: [qualified / maybe_qualified / not_qualified]
+
+NOTES:
+[Brief summary of the screening assessment]
+
+Focus on:
+- Technical skills match
+- Experience level match
+- Qualification requirements
+- Overall fit for the role
+- Be objective and fair
+- Only consider job-relevant criteria"""
+    
+    def _parse_screening_result(
+        self,
+        analysis_text: str,
+        cv_text: str,
+        job_description: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Parse AI screening analysis into structured format"""
+        result = {
+            "match_score": Decimal("50.0"),
+            "skill_match_score": Decimal("50.0"),
+            "experience_match_score": Decimal("50.0"),
+            "qualification_match_score": Decimal("50.0"),
+            "strengths": [],
+            "gaps": [],
+            "recommendation": "maybe_qualified",
+            "screening_notes": "",
+            "screening_details": {}
+        }
+        
+        try:
+            lines = analysis_text.split('\n')
+            current_section = None
+            
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # Parse scores
+                if 'MATCH_SCORE:' in line.upper():
+                    score = self._extract_number(line)
+                    if score:
+                        result["match_score"] = Decimal(str(score))
+                elif 'SKILL_MATCH:' in line.upper():
+                    score = self._extract_number(line)
+                    if score:
+                        result["skill_match_score"] = Decimal(str(score))
+                elif 'EXPERIENCE_MATCH:' in line.upper():
+                    score = self._extract_number(line)
+                    if score:
+                        result["experience_match_score"] = Decimal(str(score))
+                elif 'QUALIFICATION_MATCH:' in line.upper():
+                    score = self._extract_number(line)
+                    if score:
+                        result["qualification_match_score"] = Decimal(str(score))
+                
+                # Parse sections
+                elif line.upper().startswith('STRENGTHS:'):
+                    current_section = 'strengths'
+                elif line.upper().startswith('GAPS:'):
+                    current_section = 'gaps'
+                elif line.upper().startswith('RECOMMENDATION:'):
+                    rec = line.split(':', 1)[1].strip().lower()
+                    if 'qualified' in rec and 'not' not in rec:
+                        result["recommendation"] = "qualified"
+                    elif 'not_qualified' in rec or 'not qualified' in rec:
+                        result["recommendation"] = "not_qualified"
+                    else:
+                        result["recommendation"] = "maybe_qualified"
+                elif line.upper().startswith('NOTES:'):
+                    current_section = 'notes'
+                    result["screening_notes"] = line.split(':', 1)[1].strip() if ':' in line else ""
+                elif current_section == 'strengths' and line.startswith('-'):
+                    result["strengths"].append(line[1:].strip())
+                elif current_section == 'gaps' and line.startswith('-'):
+                    result["gaps"].append(line[1:].strip())
+                elif current_section == 'notes':
+                    result["screening_notes"] += " " + line
+            
+            # Store full analysis in details
+            result["screening_details"] = {
+                "raw_analysis": analysis_text,
+                "cv_length": len(cv_text),
+                "job_title": job_description.get('title')
+            }
+            
+        except Exception as e:
+            logger.error("Error parsing screening result", error=str(e))
+            result["screening_notes"] = f"Parsing error: {str(e)}"
+        
+        return result
+    
+    def _extract_number(self, text: str) -> Optional[float]:
+        """Extract number from text"""
+        import re
+        match = re.search(r'(\d+(?:\.\d+)?)', text)
+        if match:
+            try:
+                return float(match.group(1))
+            except:
+                return None
+        return None
+    
+    async def screen_application(
+        self,
+        application_id: UUID,
+        cv_text: str,
+        job_description: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Screen an application and store results
+        
+        Args:
+            application_id: Application ID
+            cv_text: CV text content
+            job_description: Job description data
+        
+        Returns:
+            Screening result
+        """
+        try:
+            # Perform screening
+            screening_result = await self.screen_cv(cv_text, job_description)
+            
+            # Store result in database
+            screening_data = CVScreeningResultCreate(
+                application_id=application_id,
+                **screening_result
+            )
+            
+            response = db.service_client.table("cv_screening_results").insert(
+                screening_data.model_dump()
+            ).execute()
+            
+            # Update application status
+            new_status = "qualified" if screening_result["recommendation"] == "qualified" else "screening"
+            db.service_client.table("job_applications").update({
+                "status": new_status,
+                "screened_at": datetime.utcnow().isoformat()
+            }).eq("id", str(application_id)).execute()
+            
+            logger.info("Application screened", application_id=str(application_id), match_score=screening_result["match_score"])
+            
+            return response.data[0] if response.data else screening_result
+            
+        except Exception as e:
+            logger.error("Error screening application", error=str(e), application_id=str(application_id))
+            raise
+    
+    async def batch_screen_applications(
+        self,
+        job_description_id: UUID,
+        application_ids: List[UUID]
+    ) -> List[Dict[str, Any]]:
+        """
+        Screen multiple applications for a job
+        
+        Args:
+            job_description_id: Job description ID
+            application_ids: List of application IDs to screen
+        
+        Returns:
+            List of screening results
+        """
+        try:
+            # Get job description
+            job = db.service_client.table("job_descriptions").select("*").eq("id", str(job_description_id)).execute()
+            if not job.data:
+                raise ValueError("Job description not found")
+            
+            job_description = job.data[0]
+            results = []
+            
+            # Get applications with CVs
+            applications = db.service_client.table("job_applications").select("*, cvs(*)").in_("id", [str(aid) for aid in application_ids]).execute()
+            
+            for app in applications.data or []:
+                cv_id = app.get("cv_id")
+                if not cv_id:
+                    continue
+                
+                # Get CV text
+                cv = db.service_client.table("cvs").select("parsed_text").eq("id", str(cv_id)).execute()
+                if not cv.data or not cv.data[0].get("parsed_text"):
+                    continue
+                
+                cv_text = cv.data[0]["parsed_text"]
+                
+                # Screen
+                result = await self.screen_application(
+                    UUID(app["id"]),
+                    cv_text,
+                    job_description
+                )
+                results.append(result)
+            
+            logger.info("Batch screening completed", job_id=str(job_description_id), count=len(results))
+            return results
+            
+        except Exception as e:
+            logger.error("Error in batch screening", error=str(e))
+            raise
+

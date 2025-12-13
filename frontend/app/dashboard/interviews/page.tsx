@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 
@@ -41,20 +42,12 @@ export default function InterviewsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Interviews</h1>
-            <p className="text-sm text-gray-600">Monitor interview sessions</p>
-          </div>
-          <Button variant="outline" onClick={() => router.push('/dashboard')}>
-            Back to Dashboard
-          </Button>
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Interviews</h1>
+          <p className="text-gray-600 mt-1">Monitor interview sessions</p>
         </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Card>
           <div className="text-center py-12">
             <p className="text-gray-600 mb-4">Interviews feature coming soon.</p>
@@ -66,8 +59,8 @@ export default function InterviewsPage() {
             </Button>
           </div>
         </Card>
-      </main>
-    </div>
+      </div>
+    </DashboardLayout>
   )
 }
 

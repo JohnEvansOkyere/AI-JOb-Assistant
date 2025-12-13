@@ -12,6 +12,8 @@ from .interview import Interview, InterviewCreate, InterviewUpdate
 from .interview_question import InterviewQuestion, InterviewQuestionCreate, InterviewQuestionUpdate
 from .interview_response import InterviewResponse, InterviewResponseCreate, InterviewResponseUpdate
 from .interview_report import InterviewReport, InterviewReportCreate, InterviewReportUpdate
+from .job_application import JobApplication, JobApplicationCreate, JobApplicationUpdate
+from .cv_screening import CVScreeningResult, CVScreeningResultCreate
 
 __all__ = [
     # User
@@ -50,4 +52,11 @@ __all__ = [
     "InterviewReport",
     "InterviewReportCreate",
     "InterviewReportUpdate",
+    # Job Application
+    "JobApplication",
+    "JobApplicationCreate",
+    "JobApplicationUpdate",
+    # CV Screening
+    "CVScreeningResult",
+    "CVScreeningResultCreate",
 ]

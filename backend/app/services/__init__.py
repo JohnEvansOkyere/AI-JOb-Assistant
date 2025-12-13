@@ -8,6 +8,8 @@ from .cv_service import CVService
 from .cv_parser import CVParser
 from .ticket_service import TicketService
 from .interview_service import InterviewService
+from .application_service import ApplicationService
+from .cv_screening_service import CVScreeningService
 
 __all__ = [
     "JobDescriptionService",
@@ -15,4 +17,6 @@ __all__ = [
     "CVParser",
     "TicketService",
     "InterviewService",
+    "ApplicationService",
+    "CVScreeningService",
 ]

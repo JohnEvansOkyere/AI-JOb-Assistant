@@ -12,9 +12,13 @@ from app.api import (
     auth_router,
     health_router,
     job_descriptions_router,
+    job_descriptions_public_router,
     cvs_router,
     tickets_router,
-    interviews_router
+    interviews_router,
+    applications_router,
+    application_forms_router,
+    stats_router
 )
 from app.utils.errors import (
     app_exception_handler,
@@ -106,9 +110,13 @@ async def root():
 app.include_router(auth_router)
 app.include_router(health_router)
 app.include_router(job_descriptions_router)
+app.include_router(job_descriptions_public_router)  # Public job viewing
 app.include_router(cvs_router)
 app.include_router(tickets_router)
 app.include_router(interviews_router)
+app.include_router(applications_router)
+app.include_router(application_forms_router)
+app.include_router(stats_router)
 
 if __name__ == "__main__":
     import uvicorn

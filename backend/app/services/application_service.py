@@ -77,24 +77,56 @@ class ApplicationService:
                 )
             
             # Create application
+            # Generate UUID for the application
+            import uuid
+            from datetime import datetime
+            application_id = str(uuid.uuid4())
+            
+            # Check if application already exists (UNIQUE constraint: job_description_id, candidate_id)
+            existing = db.service_client.table("job_applications").select("id").eq(
+                "job_description_id", str(application_data.job_description_id)
+            ).eq("candidate_id", str(candidate_id)).execute()
+            
+            if existing.data:
+                logger.info("Application already exists", 
+                           application_id=existing.data[0]["id"],
+                           job_id=str(application_data.job_description_id),
+                           candidate_id=str(candidate_id))
+                # Return existing application
+                return existing.data[0]
+            
             application_dict = {
+                "id": application_id,
                 "job_description_id": str(application_data.job_description_id),
                 "candidate_id": str(candidate_id),
                 "cv_id": cv["id"],
                 "cover_letter": application_data.cover_letter,
-                "status": "pending"
+                "status": "pending",
+                "applied_at": datetime.utcnow().isoformat()  # Explicitly set applied_at
             }
+            
+            logger.info("Creating job application", 
+                       application_id=application_id,
+                       job_id=str(application_data.job_description_id),
+                       candidate_id=str(candidate_id),
+                       cv_id=cv["id"])
             
             response = db.service_client.table("job_applications").insert(application_dict).execute()
             
             if not response.data:
-                raise NotFoundError("Job application", "creation failed")
+                logger.error("Application insert returned no data", application_dict=application_dict)
+                raise NotFoundError("Job application", "creation failed - no data returned")
             
-            logger.info("Application created", application_id=response.data[0]["id"], job_id=str(application_data.job_description_id))
+            logger.info("Application created successfully", 
+                       application_id=response.data[0]["id"], 
+                       job_id=str(application_data.job_description_id),
+                       candidate_id=str(candidate_id))
             return response.data[0]
             
         except Exception as e:
-            logger.error("Error creating application", error=str(e))
+            logger.error("Error creating application", error=str(e), exc_info=True, 
+                        job_id=str(application_data.job_description_id) if 'application_data' in locals() else None,
+                        candidate_id=str(candidate_id) if 'candidate_id' in locals() else None)
             raise
     
     @staticmethod
@@ -134,7 +166,7 @@ class ApplicationService:
             if not job.data:
                 raise NotFoundError("Job description", str(job_description_id))
             
-            query = db.service_client.table("job_applications").select("*, candidates(*), cvs(*)").eq("job_description_id", str(job_description_id))
+            query = db.service_client.table("job_applications").select("*, candidates!inner(*), cvs(*)").eq("job_description_id", str(job_description_id))
             
             if status:
                 query = query.eq("status", status)

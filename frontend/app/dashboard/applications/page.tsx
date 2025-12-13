@@ -11,7 +11,9 @@ import { useAuth } from '@/hooks/useAuth'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 import { apiClient } from '@/lib/api/client'
+import { Briefcase, User, Mail, Calendar, CheckCircle, Clock, XCircle, Filter } from 'lucide-react'
 
 interface Application {
   id: string
@@ -19,8 +21,22 @@ interface Application {
   candidate_id: string
   status: string
   applied_at: string
-  job_descriptions?: { title: string }
-  candidates?: { full_name: string; email: string }
+  cover_letter?: string
+  candidates?: {
+    full_name: string
+    email: string
+    phone?: string
+  }
+  job_descriptions?: {
+    id: string
+    title: string
+  }
+  cv_screening_results?: {
+    match_score: number
+    recommendation: string
+    strengths?: string[]
+    gaps?: string[]
+  }
 }
 
 export default function ApplicationsPage() {
@@ -29,6 +45,8 @@ export default function ApplicationsPage() {
   const [applications, setApplications] = useState<Application[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -37,11 +55,69 @@ export default function ApplicationsPage() {
     }
 
     if (isAuthenticated) {
-      // For now, we'll need to get applications from all jobs
-      // This is a simplified version - in production, you'd want a dedicated endpoint
-      setLoading(false)
+      loadApplications()
     }
   }, [isAuthenticated, authLoading, router])
+
+  const loadApplications = async () => {
+    try {
+      setLoading(true)
+      setError('')
+      const token = localStorage.getItem('auth_token')
+      if (token) {
+        apiClient.setToken(token)
+      }
+      const response = await apiClient.get<Application[]>('/applications')
+      if (response.success && response.data) {
+        setApplications(response.data)
+      } else {
+        setError(response.message || 'Failed to load applications')
+      }
+    } catch (err: any) {
+      console.error('Error loading applications:', err)
+      setError(err.message || 'An error occurred while loading applications')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const filteredApplications = applications.filter(app => {
+    const matchesSearch = 
+      app.candidates?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      app.candidates?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      app.job_descriptions?.title?.toLowerCase().includes(searchTerm.toLowerCase())
+    
+    const matchesStatus = statusFilter === 'all' || app.status === statusFilter
+    
+    return matchesSearch && matchesStatus
+  })
+
+  const getStatusBadge = (status: string) => {
+    const statusConfig = {
+      pending: { label: 'Pending', className: 'bg-yellow-100 text-yellow-800', icon: Clock },
+      qualified: { label: 'Qualified', className: 'bg-green-100 text-green-800', icon: CheckCircle },
+      screening: { label: 'Screening', className: 'bg-blue-100 text-blue-800', icon: Clock },
+      rejected: { label: 'Rejected', className: 'bg-red-100 text-red-800', icon: XCircle },
+      interview_scheduled: { label: 'Interview Scheduled', className: 'bg-purple-100 text-purple-800', icon: Calendar },
+    }
+    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pending
+    const Icon = config.icon
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${config.className}`}>
+        <Icon className="h-3 w-3" />
+        {config.label}
+      </span>
+    )
+  }
+
+  const statusCounts = {
+    all: applications.length,
+    pending: applications.filter(a => a.status === 'pending').length,
+    qualified: applications.filter(a => a.status === 'qualified').length,
+    screening: applications.filter(a => a.status === 'screening').length,
+    rejected: applications.filter(a => a.status === 'rejected').length,
+    interview_scheduled: applications.filter(a => a.status === 'interview_scheduled').length,
+  }
 
   if (authLoading || loading) {
     return (
@@ -49,7 +125,7 @@ export default function ApplicationsPage() {
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading...</p>
+            <p className="mt-4 text-gray-600">Loading applications...</p>
           </div>
         </div>
       </DashboardLayout>
@@ -68,23 +144,152 @@ export default function ApplicationsPage() {
             <h1 className="text-2xl font-bold text-gray-900">Applications</h1>
             <p className="text-gray-600 mt-1">View and manage all job applications</p>
           </div>
-          <Button variant="primary" onClick={() => router.push('/dashboard/jobs')}>
-            View Jobs
-          </Button>
-        </div>
-
-        <Card>
-          <div className="text-center py-12">
-            <p className="text-gray-600 mb-4">
-              To view applications, please select a job from the Jobs page.
-            </p>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={loadApplications} disabled={loading}>
+              {loading ? 'Loading...' : 'Refresh'}
+            </Button>
             <Button variant="primary" onClick={() => router.push('/dashboard/jobs')}>
-              Go to Jobs
+              View Jobs
             </Button>
           </div>
-        </Card>
+        </div>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+            {error}
+          </div>
+        )}
+
+        {/* Filters */}
+        <div className="bg-white rounded-lg shadow-md p-4 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input
+              type="text"
+              placeholder="Search by candidate name, email, or job title..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            <div className="flex items-center gap-2">
+              <Filter className="h-5 w-5 text-gray-400" />
+              <select
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option value="all">All Status ({statusCounts.all})</option>
+                <option value="pending">Pending ({statusCounts.pending})</option>
+                <option value="screening">Screening ({statusCounts.screening})</option>
+                <option value="qualified">Qualified ({statusCounts.qualified})</option>
+                <option value="rejected">Rejected ({statusCounts.rejected})</option>
+                <option value="interview_scheduled">Interview Scheduled ({statusCounts.interview_scheduled})</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {filteredApplications.length === 0 ? (
+          <Card>
+            <div className="text-center py-12">
+              <Briefcase className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600 mb-4">
+                {searchTerm || statusFilter !== 'all'
+                  ? 'No applications match your filters.'
+                  : 'No applications yet.'}
+              </p>
+              {!searchTerm && statusFilter === 'all' && (
+                <Button variant="primary" onClick={() => router.push('/dashboard/jobs')}>
+                  View Job Postings
+                </Button>
+              )}
+            </div>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {filteredApplications.map((app) => (
+              <Card key={app.id}>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                          <User className="h-5 w-5 text-gray-400" />
+                          {app.candidates?.full_name || 'Unknown Candidate'}
+                        </h3>
+                        <div className="mt-1 space-y-1">
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Mail className="h-4 w-4" />
+                            {app.candidates?.email}
+                          </div>
+                          {app.candidates?.phone && (
+                            <div className="text-sm text-gray-600">
+                              {app.candidates.phone}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {getStatusBadge(app.status)}
+                    </div>
+
+                    <div className="border-t pt-3 space-y-2">
+                      <div className="flex items-center gap-2 text-sm">
+                        <Briefcase className="h-4 w-4 text-gray-400" />
+                        <span className="font-medium text-gray-900">
+                          {app.job_descriptions?.title || 'Unknown Job'}
+                        </span>
+                      </div>
+
+                      {app.cv_screening_results && (
+                        <div className="flex items-center gap-4 text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-600">Match Score:</span>
+                            <span className={`font-semibold ${
+                              app.cv_screening_results.match_score >= 70
+                                ? 'text-green-600'
+                                : app.cv_screening_results.match_score >= 50
+                                ? 'text-yellow-600'
+                                : 'text-red-600'
+                            }`}>
+                              {app.cv_screening_results.match_score}%
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-600">Recommendation:</span>
+                            <span className="font-medium capitalize">
+                              {app.cv_screening_results.recommendation?.replace('_', ' ')}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <Calendar className="h-3 w-3" />
+                        Applied {new Date(app.applied_at).toLocaleDateString()} at {new Date(app.applied_at).toLocaleTimeString()}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2 ml-4">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => router.push(`/dashboard/jobs/${app.job_description_id}/applications/${app.id}`)}
+                    >
+                      View Details
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => router.push(`/dashboard/jobs/${app.job_description_id}/applications`)}
+                    >
+                      View Job
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </DashboardLayout>
   )
 }
-

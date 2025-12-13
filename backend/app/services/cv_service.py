@@ -52,7 +52,7 @@ class CVService:
             if job_description_id:
                 cv_data["job_description_id"] = str(job_description_id)
             
-            response = db.client.table("cvs").insert(cv_data).execute()
+            response = db.service_client.table("cvs").insert(cv_data).execute()
             
             if not response.data:
                 raise NotFoundError("CV", "creation failed")
@@ -79,7 +79,7 @@ class CVService:
             NotFoundError: If CV not found
         """
         try:
-            response = db.client.table("cvs").select("*").eq("id", str(cv_id)).execute()
+            response = db.service_client.table("cvs").select("*").eq("id", str(cv_id)).execute()
             
             if not response.data:
                 raise NotFoundError("CV", str(cv_id))
@@ -117,7 +117,7 @@ class CVService:
             if parsed_json:
                 update_data["parsed_json"] = parsed_json
             
-            response = db.client.table("cvs").update(update_data).eq("id", str(cv_id)).execute()
+            response = db.service_client.table("cvs").update(update_data).eq("id", str(cv_id)).execute()
             
             if not response.data:
                 raise NotFoundError("CV", str(cv_id))
@@ -143,7 +143,7 @@ class CVService:
             List of CVs
         """
         try:
-            response = db.client.table("cvs").select("*").eq("job_description_id", str(job_description_id)).order("uploaded_at", desc=True).execute()
+            response = db.service_client.table("cvs").select("*").eq("job_description_id", str(job_description_id)).order("uploaded_at", desc=True).execute()
             
             return response.data or []
             

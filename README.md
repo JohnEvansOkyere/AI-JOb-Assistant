@@ -102,6 +102,7 @@ See individual phase documentation in `docs/` directory.
 ## Important Documentation
 
 - **[Errors and Solutions](./docs/ERRORS_AND_SOLUTIONS.md)** - Troubleshooting guide for common errors
+- **[Storage Setup Guide](./docs/STORAGE_SETUP.md)** - Supabase storage bucket setup instructions
 - **[Application Flow](./docs/APPLICATION_FLOW.md)** - Complete job application and screening flow
 - **[Application Forms](./docs/APPLICATION_FORMS.md)** - Custom application form builder documentation
 - **[Migration Guide](./docs/MIGRATION_GUIDE.md)** - Database migration instructions

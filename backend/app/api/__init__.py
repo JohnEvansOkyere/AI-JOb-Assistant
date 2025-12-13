@@ -13,6 +13,7 @@ from .interviews import router as interviews_router
 from .applications import router as applications_router
 from .application_forms import router as application_forms_router
 from .stats import router as stats_router
+from .candidates import router as candidates_router
 
 __all__ = [
     "auth_router",
@@ -25,4 +26,5 @@ __all__ = [
     "applications_router",
     "application_forms_router",
     "stats_router",
+    "candidates_router",
 ]

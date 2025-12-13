@@ -82,11 +82,19 @@ async def apply_for_job(
                     file_options={"content-type": mime_type}
                 )
         except Exception as e:
-            logger.error("Error uploading CV", error=str(e))
+            error_str = str(e)
+            logger.error("Error uploading CV", error=error_str, bucket=bucket_name)
             os.remove(temp_file_path)
+            
+            # Provide helpful error message for missing bucket
+            if "bucket not found" in error_str.lower() or "404" in error_str:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Storage bucket '{bucket_name}' not found. Please create the bucket in Supabase Storage. See documentation for setup instructions."
+                )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to upload CV"
+                detail=f"Failed to upload CV: {error_str}"
             )
         
         # Parse CV
@@ -122,18 +130,33 @@ async def apply_for_job(
             try:
                 import json
                 custom_data = json.loads(custom_fields)
-                responses = [
-                    ApplicationFormResponseCreate(
-                        application_id=UUID(application["id"]),
-                        field_key=key,
-                        field_value=str(value) if value is not None else ""
+                responses = []
+                for key, value in custom_data.items():
+                    # Handle different value types
+                    if value is None:
+                        field_value = ""
+                    elif isinstance(value, list):
+                        # For checkbox fields (arrays), convert to JSON string
+                        field_value = json.dumps(value)
+                    elif isinstance(value, (dict, bool)):
+                        # For complex types, convert to JSON string
+                        field_value = json.dumps(value)
+                    else:
+                        # For simple types, convert to string
+                        field_value = str(value)
+                    
+                    responses.append(
+                        ApplicationFormResponseCreate(
+                            application_id=UUID(application["id"]),
+                            field_key=key,
+                            field_value=field_value
+                        )
                     )
-                    for key, value in custom_data.items()
-                ]
+                
                 if responses:
                     await ApplicationFormService.save_form_responses(responses)
             except Exception as e:
-                logger.warning("Error saving custom form responses", error=str(e))
+                logger.warning("Error saving custom form responses", error=str(e), exc_info=True)
                 # Don't fail the application if custom fields fail
         
         return Response(
@@ -145,10 +168,115 @@ async def apply_for_job(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Error creating application", error=str(e))
+        logger.error("Error creating application", error=str(e), exc_info=True)
+        # Provide more detailed error message
+        error_detail = str(e)
+        if "could not find the table" in error_detail.lower():
+            error_detail = "Database tables not found. Please run migrations."
+        elif "RLS" in error_detail or "row-level security" in error_detail.lower():
+            error_detail = "Database access error. Please check RLS policies."
+        
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to submit application: {str(e)}"
+            detail=f"Failed to submit application: {error_detail}"
+        )
+
+
+@router.get("", response_model=Response[List[dict]])
+async def list_all_applications(
+    status: Optional[str] = Query(None, description="Filter by status"),
+    recruiter_id: UUID = Depends(get_current_user_id)
+):
+    """
+    List all applications for the recruiter (across all jobs)
+    
+    Args:
+        status: Optional status filter
+        recruiter_id: Current user ID
+    
+    Returns:
+        List of applications with job and candidate details
+    """
+    try:
+        # Get all job IDs for this recruiter
+        jobs = db.service_client.table("job_descriptions").select("id").eq("recruiter_id", str(recruiter_id)).execute()
+        job_ids = [job["id"] for job in (jobs.data or [])]
+        
+        if not job_ids:
+            return Response(
+                success=True,
+                message="No applications found",
+                data=[]
+            )
+        
+        # Get all applications for these jobs
+        # Fetch applications first
+        query = db.service_client.table("job_applications").select("*").in_("job_description_id", job_ids)
+        
+        if status:
+            query = query.eq("status", status)
+        
+        query = query.order("applied_at", desc=True)
+        applications_response = query.execute()
+        applications_data = applications_response.data or []
+        
+        if not applications_data:
+            return Response(
+                success=True,
+                message="Applications retrieved successfully",
+                data=[]
+            )
+        
+        # Get related data separately
+        candidate_ids = list(set(app.get("candidate_id") for app in applications_data if app.get("candidate_id")))
+        application_ids = [app.get("id") for app in applications_data if app.get("id")]
+        
+        # Fetch candidates
+        candidates_data = {}
+        if candidate_ids:
+            candidates_response = db.service_client.table("candidates").select("*").in_("id", candidate_ids).execute()
+            for candidate in (candidates_response.data or []):
+                candidates_data[candidate["id"]] = candidate
+        
+        # Fetch job details
+        job_details = {}
+        if job_ids:
+            jobs_response = db.service_client.table("job_descriptions").select("id, title").in_("id", job_ids).execute()
+            for job in (jobs_response.data or []):
+                job_details[job["id"]] = job
+        
+        # Fetch screening results
+        screening_results = {}
+        if application_ids:
+            screening_response = db.service_client.table("cv_screening_results").select("*").in_("application_id", application_ids).execute()
+            for screening in (screening_response.data or []):
+                screening_results[screening["application_id"]] = screening
+        
+        # Combine data
+        enriched_applications = []
+        for app in applications_data:
+            candidate_id = app.get("candidate_id")
+            job_id = app.get("job_description_id")
+            app_id = app.get("id")
+            
+            enriched_app = {
+                **app,
+                "candidates": candidates_data.get(candidate_id),
+                "job_descriptions": job_details.get(job_id),
+                "cv_screening_results": screening_results.get(app_id)
+            }
+            enriched_applications.append(enriched_app)
+        
+        return Response(
+            success=True,
+            message="Applications retrieved successfully",
+            data=enriched_applications
+        )
+    except Exception as e:
+        logger.error("Error listing all applications", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
         )
 
 

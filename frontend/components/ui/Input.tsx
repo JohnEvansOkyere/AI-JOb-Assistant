@@ -3,7 +3,7 @@
  * Reusable input component
  */
 
-import React from 'react'
+import React, { useState } from 'react'
 import { clsx } from 'clsx'
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -20,7 +20,7 @@ export function Input({
   id,
   ...props
 }: InputProps) {
-  const inputId = id || `input-${Math.random().toString(36).substr(2, 9)}`
+  const [inputId] = useState(() => id || `input-${Math.random().toString(36).substr(2, 9)}`)
 
   return (
     <div className="w-full">

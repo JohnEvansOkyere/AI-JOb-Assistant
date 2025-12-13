@@ -67,17 +67,26 @@ async def upload_cv(
         storage_path = f"{candidate_id}/{file.filename}"
         try:
             with open(temp_file_path, 'rb') as f:
-                db.service_client.storage.from_(settings.supabase_storage_bucket_cvs).upload(
+                bucket_name = settings.supabase_storage_bucket_cvs
+                db.service_client.storage.from_(bucket_name).upload(
                     storage_path,
                     f.read(),
                     file_options={"content-type": mime_type}
                 )
         except Exception as e:
-            logger.error("Error uploading to storage", error=str(e))
+            error_str = str(e)
+            logger.error("Error uploading to storage", error=error_str, bucket=bucket_name)
             os.remove(temp_file_path)
+            
+            # Provide helpful error message for missing bucket
+            if "bucket not found" in error_str.lower() or "404" in error_str:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Storage bucket '{bucket_name}' not found. Please create the bucket in Supabase Storage. See documentation for setup instructions."
+                )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to upload file to storage"
+                detail=f"Failed to upload file to storage: {error_str}"
             )
         
         # Parse CV content

@@ -66,7 +66,12 @@ export default function ApplyPage() {
           // Initialize custom field values
           const initialValues: Record<string, any> = {}
           fieldsResponse.data.forEach((field: any) => {
-            initialValues[field.field_key] = ''
+            // Initialize based on field type
+            if (field.field_type === 'checkbox') {
+              initialValues[field.field_key] = []
+            } else {
+              initialValues[field.field_key] = ''
+            }
           })
           setCustomFieldValues(initialValues)
         }

@@ -59,27 +59,32 @@ async def get_dashboard_stats(recruiter_id: UUID = Depends(get_current_user_id))
         completed_interviews = db.service_client.table("interviews").select("id", count="exact").in_("job_description_id", job_id_list).eq("status", "completed").execute()
         completed_interviews_count = completed_interviews.count if hasattr(completed_interviews, 'count') else len(completed_interviews.data) if completed_interviews.data else 0
         
-        # Get candidates count
-        candidates = db.service_client.table("candidates").select("id", count="exact").execute()
-        total_candidates = candidates.count if hasattr(candidates, 'count') else len(candidates.data) if candidates.data else 0
+        # Get candidates count (only candidates who applied to this recruiter's jobs)
+        total_candidates = 0
+        if job_id_list:
+            # Get unique candidate IDs from applications
+            applications_for_candidates = db.service_client.table("job_applications").select("candidate_id").in_("job_description_id", job_id_list).execute()
+            if applications_for_candidates.data:
+                unique_candidate_ids = set(app.get("candidate_id") for app in applications_for_candidates.data if app.get("candidate_id"))
+                total_candidates = len(unique_candidate_ids)
+        
+        # Get qualified candidates count (from screening results)
+        qualified_candidates = 0
+        if job_id_list:
+            # Get applications with qualified screening results
+            qualified_apps = db.service_client.table("job_applications").select("candidate_id").in_("job_description_id", job_id_list).eq("status", "qualified").execute()
+            if qualified_apps.data:
+                unique_qualified_candidate_ids = set(app.get("candidate_id") for app in qualified_apps.data if app.get("candidate_id"))
+                qualified_candidates = len(unique_qualified_candidate_ids)
         
         stats = {
-            "jobs": {
-                "total": total_jobs,
-                "active": active_jobs_count,
-            },
-            "applications": {
-                "total": total_applications,
-                "pending": pending_applications,
-                "qualified": qualified_applications,
-            },
-            "interviews": {
-                "total": total_interviews,
-                "completed": completed_interviews_count,
-            },
-            "candidates": {
-                "total": total_candidates,
-            },
+            "total_jobs": total_jobs,
+            "active_jobs": active_jobs_count,
+            "total_applications": total_applications,
+            "pending_applications": pending_applications,
+            "qualified_candidates": qualified_candidates,
+            "total_interviews": total_interviews,
+            "completed_interviews": completed_interviews_count,
         }
         
         return Response(

@@ -125,7 +125,7 @@ curl -X POST http://localhost:8000/auth/register \
 curl -X POST http://localhost:8000/auth/login \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "recruiter@example.com",
+    "email": "okyerevansjohn@gmail.com",
     "password": "securepassword123"
   }'
 ```

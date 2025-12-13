@@ -1,7 +1,12 @@
 """
 API Routes
-FastAPI route handlers
+Export all API routers
 """
 
-# API routes will be added in Phase 2
+from .auth import router as auth_router
+from .health import router as health_router
 
+__all__ = [
+    "auth_router",
+    "health_router",
+]

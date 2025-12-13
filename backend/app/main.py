@@ -3,10 +3,18 @@ FastAPI Application Entry Point
 Main application setup and configuration
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from app.config import settings
+from app.api import auth_router, health_router
+from app.utils.errors import (
+    app_exception_handler,
+    validation_exception_handler,
+    general_exception_handler,
+    AppException
+)
 import structlog
 
 # Configure structured logging
@@ -43,6 +51,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register exception handlers
+app.add_exception_handler(AppException, app_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(Exception, general_exception_handler)
 
 
 @app.on_event("startup")
@@ -82,8 +95,9 @@ async def root():
     }
 
 
-# Import and include routers (will be added in later phases)
-# from app.api import auth, jobs, interviews, etc.
+# Include API routers
+app.include_router(auth_router)
+app.include_router(health_router)
 
 if __name__ == "__main__":
     import uvicorn

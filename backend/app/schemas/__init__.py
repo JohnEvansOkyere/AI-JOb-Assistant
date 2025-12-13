@@ -1,7 +1,17 @@
 """
-Pydantic Schemas
-Request/Response schemas for API endpoints
+API Schemas
+Export all request/response schemas
 """
 
-# Schemas will be added in Phase 2
+from .auth import Token, TokenData, UserLogin, UserRegister
+from .common import Response, ErrorResponse, PaginatedResponse
 
+__all__ = [
+    "Token",
+    "TokenData",
+    "UserLogin",
+    "UserRegister",
+    "Response",
+    "ErrorResponse",
+    "PaginatedResponse",
+]

@@ -65,9 +65,10 @@ async def upload_cv(
         
         # Upload to Supabase Storage
         storage_path = f"{candidate_id}/{file.filename}"
+        bucket_name = settings.supabase_storage_bucket_cvs
+        
         try:
             with open(temp_file_path, 'rb') as f:
-                bucket_name = settings.supabase_storage_bucket_cvs
                 db.service_client.storage.from_(bucket_name).upload(
                     storage_path,
                     f.read(),
@@ -75,19 +76,27 @@ async def upload_cv(
                 )
         except Exception as e:
             error_str = str(e)
-            logger.error("Error uploading to storage", error=error_str, bucket=bucket_name)
             os.remove(temp_file_path)
             
-            # Provide helpful error message for missing bucket
-            if "bucket not found" in error_str.lower() or "404" in error_str:
+            # Handle duplicate file gracefully (409 Conflict)
+            if "409" in error_str or "duplicate" in error_str.lower() or "already exists" in error_str.lower():
+                logger.info("CV file already exists in storage, using existing file", 
+                           storage_path=storage_path, 
+                           bucket=bucket_name)
+                # File already exists, continue with the existing file
+                # No need to raise an error - we'll use the existing file path
+            elif "bucket not found" in error_str.lower() or "404" in error_str:
+                logger.error("Error uploading to storage - bucket not found", error=error_str, bucket=bucket_name)
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"Storage bucket '{bucket_name}' not found. Please create the bucket in Supabase Storage. See documentation for setup instructions."
                 )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to upload file to storage: {error_str}"
-            )
+            else:
+                logger.error("Error uploading to storage", error=error_str, bucket=bucket_name)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to upload file to storage: {error_str}"
+                )
         
         # Parse CV content
         try:

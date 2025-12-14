@@ -6,6 +6,7 @@ AI-powered CV screening and matching against job descriptions
 from typing import Dict, Any, List, Optional
 from uuid import UUID
 from decimal import Decimal
+from datetime import datetime
 from app.ai.providers import AIProviderFactory
 from app.ai.prompts import InterviewPrompts
 from app.database import db
@@ -56,7 +57,7 @@ class CVScreeningService:
             # Parse and structure results
             result = self._parse_screening_result(analysis_text, cv_text, job_description)
             
-            logger.info("CV screened", match_score=result["match_score"])
+            logger.info("CV screened", match_score=float(result["match_score"]))
             return result
             
         except Exception as e:
@@ -210,6 +211,24 @@ Focus on:
                 return None
         return None
     
+    def _convert_decimal_to_float(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert Decimal values to float for JSON serialization"""
+        from decimal import Decimal
+        result = {}
+        for key, value in data.items():
+            if isinstance(value, Decimal):
+                result[key] = float(value)
+            elif isinstance(value, dict):
+                result[key] = self._convert_decimal_to_float(value)
+            elif isinstance(value, list):
+                result[key] = [
+                    self._convert_decimal_to_float(item) if isinstance(item, dict) else (float(item) if isinstance(item, Decimal) else item)
+                    for item in value
+                ]
+            else:
+                result[key] = value
+        return result
+    
     async def screen_application(
         self,
         application_id: UUID,
@@ -228,32 +247,62 @@ Focus on:
             Screening result
         """
         try:
+            # Check if screening result already exists
+            existing = db.service_client.table("cv_screening_results").select("*").eq("application_id", str(application_id)).execute()
+            
             # Perform screening
             screening_result = await self.screen_cv(cv_text, job_description)
             
-            # Store result in database
-            screening_data = CVScreeningResultCreate(
-                application_id=application_id,
-                **screening_result
-            )
+            # Convert Decimal to float for JSON serialization
+            screening_result_serializable = self._convert_decimal_to_float(screening_result)
             
-            response = db.service_client.table("cv_screening_results").insert(
-                screening_data.model_dump()
-            ).execute()
+            if existing.data:
+                logger.info("Screening result already exists, updating", application_id=str(application_id))
+                # Update existing result (remove application_id from update data)
+                update_data = {k: v for k, v in screening_result_serializable.items() if k != "application_id"}
+                response = db.service_client.table("cv_screening_results").update(
+                    update_data
+                ).eq("application_id", str(application_id)).execute()
+            else:
+                # Store new result in database
+                # Use serializable version (already converted to float)
+                # Pass directly to Supabase to avoid Pydantic converting back to Decimal
+                # Explicitly generate UUID for id column (Supabase client doesn't trigger DEFAULT)
+                from uuid import uuid4
+                insert_data = {
+                    "id": str(uuid4()),
+                    "application_id": str(application_id),
+                    **screening_result_serializable
+                }
+                
+                response = db.service_client.table("cv_screening_results").insert(
+                    insert_data
+                ).execute()
             
-            # Update application status
-            new_status = "qualified" if screening_result["recommendation"] == "qualified" else "screening"
+            # Update application status based on recommendation
+            recommendation = screening_result.get("recommendation", "maybe_qualified")
+            if recommendation == "qualified":
+                new_status = "qualified"
+            elif recommendation == "not_qualified":
+                new_status = "rejected"
+            else:
+                new_status = "screening"  # maybe_qualified stays in screening for manual review
+            
             db.service_client.table("job_applications").update({
                 "status": new_status,
                 "screened_at": datetime.utcnow().isoformat()
             }).eq("id", str(application_id)).execute()
             
-            logger.info("Application screened", application_id=str(application_id), match_score=screening_result["match_score"])
+            logger.info("Application screened", application_id=str(application_id), match_score=float(screening_result["match_score"]))
             
-            return response.data[0] if response.data else screening_result
+            # Return serializable version
+            # Ensure response data is also serializable (in case Supabase returns Decimal)
+            if response.data and response.data[0]:
+                return self._convert_decimal_to_float(response.data[0])
+            return screening_result_serializable
             
         except Exception as e:
-            logger.error("Error screening application", error=str(e), application_id=str(application_id))
+            logger.error("Error screening application", error=str(e), application_id=str(application_id), exc_info=True)
             raise
     
     async def batch_screen_applications(

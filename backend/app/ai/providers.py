@@ -50,10 +50,57 @@ class OpenAIProvider(AIProvider):
             raise ValueError("OpenAI API key not configured")
         try:
             from openai import OpenAI
-            self.client = OpenAI(api_key=settings.openai_api_key)
-            self.model = settings.openai_model
+            import httpx
+            import os
+            
+            # Create a custom httpx client that explicitly doesn't use proxies
+            # This prevents httpx from reading proxy environment variables and passing them to OpenAI
+            # We need to create the httpx client in a way that doesn't read proxy env vars
+            original_proxies = {}
+            proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy']
+            
+            # Temporarily remove proxy environment variables
+            for var in proxy_vars:
+                if var in os.environ:
+                    original_proxies[var] = os.environ.pop(var)
+            
+            try:
+                # Create httpx client without reading proxy environment variables
+                # trust_env=False prevents httpx from reading HTTP_PROXY, HTTPS_PROXY, etc.
+                http_client = httpx.Client(
+                    timeout=60.0,
+                    follow_redirects=True,
+                    trust_env=False  # Don't read proxy env vars
+                )
+                
+                # Initialize OpenAI client with custom http_client
+                # This bypasses httpx's automatic proxy detection from environment
+                self.client = OpenAI(
+                    api_key=settings.openai_api_key,
+                    http_client=http_client
+                )
+                self.model = settings.openai_model
+            finally:
+                # Restore proxy environment variables
+                for var, value in original_proxies.items():
+                    os.environ[var] = value
         except ImportError:
             raise ImportError("OpenAI package not installed. Run: pip install openai")
+        except TypeError as e:
+            if "proxies" in str(e) or "unexpected keyword" in str(e).lower():
+                logger.error("OpenAI client initialization error", error=str(e))
+                # Fallback: try without custom http_client
+                try:
+                    logger.warning("Retrying OpenAI client without custom http_client")
+                    self.client = OpenAI(api_key=settings.openai_api_key)
+                    self.model = settings.openai_model
+                except Exception as e2:
+                    raise ValueError(f"Failed to initialize OpenAI client. This may be due to library version incompatibility. Error: {str(e2)}")
+            else:
+                raise
+        except Exception as e:
+            logger.error("Failed to initialize OpenAI client", error=str(e))
+            raise ValueError(f"Failed to initialize OpenAI client: {str(e)}")
     
     async def generate_completion(
         self,
@@ -123,10 +170,52 @@ class GroqProvider(AIProvider):
             raise ValueError("Groq API key not configured")
         try:
             from groq import Groq
-            self.client = Groq(api_key=settings.groq_api_key)
-            self.model = settings.groq_model
+            import httpx
+            import os
+            
+            # Temporarily remove proxy environment variables
+            # Groq client reads these and tries to pass them as proxies parameter
+            original_proxies = {}
+            proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy']
+            
+            for var in proxy_vars:
+                if var in os.environ:
+                    original_proxies[var] = os.environ.pop(var)
+            
+            try:
+                # Try with custom http_client first (if Groq supports it)
+                # trust_env=False prevents httpx from reading proxy env vars
+                try:
+                    http_client = httpx.Client(
+                        timeout=60.0,
+                        follow_redirects=True,
+                        trust_env=False  # Don't read proxy env vars
+                    )
+                    self.client = Groq(
+                        api_key=settings.groq_api_key,
+                        http_client=http_client
+                    )
+                except TypeError:
+                    # If Groq doesn't accept http_client parameter, initialize without it
+                    # The proxy env vars are already removed, so this should work
+                    self.client = Groq(api_key=settings.groq_api_key)
+                
+                self.model = settings.groq_model
+            finally:
+                # Restore proxy environment variables
+                for var, value in original_proxies.items():
+                    os.environ[var] = value
         except ImportError:
             raise ImportError("Groq package not installed. Run: pip install groq")
+        except TypeError as e:
+            if "proxies" in str(e) or "unexpected keyword" in str(e).lower():
+                logger.error("Groq client initialization error", error=str(e))
+                raise ValueError(f"Failed to initialize Groq client. This may be due to library version incompatibility. Error: {str(e)}")
+            else:
+                raise
+        except Exception as e:
+            logger.error("Failed to initialize Groq client", error=str(e))
+            raise ValueError(f"Failed to initialize Groq client: {str(e)}")
     
     async def generate_completion(
         self,

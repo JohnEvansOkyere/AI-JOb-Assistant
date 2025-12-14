@@ -5,6 +5,7 @@ Business logic for job applications
 
 from typing import List, Optional
 from uuid import UUID
+from datetime import datetime
 from app.models.job_application import JobApplication, JobApplicationCreate, JobApplicationUpdate
 from app.models.candidate import Candidate, CandidateCreate
 from app.database import db
@@ -126,11 +127,30 @@ class ApplicationService:
                 logger.error("Failed to fetch full application record after insert", application_id=application_id)
                 raise NotFoundError("Job application", "creation failed - could not fetch full record")
             
+            record = full_record.data[0]
+            
+            # Log what fields we got back
+            logger.info("Fetched application record", 
+                       application_id=record.get("id"),
+                       has_created_at="created_at" in record,
+                       has_updated_at="updated_at" in record,
+                       fields=list(record.keys()))
+            
+            # Ensure created_at and updated_at exist - if not, set them explicitly
+            # This handles cases where Supabase doesn't return these fields even with select("*")
+            if "created_at" not in record or record.get("created_at") is None:
+                logger.warning("created_at missing from fetched record, setting explicitly", application_id=application_id)
+                record["created_at"] = datetime.utcnow().isoformat()
+            
+            if "updated_at" not in record or record.get("updated_at") is None:
+                logger.warning("updated_at missing from fetched record, setting explicitly", application_id=application_id)
+                record["updated_at"] = datetime.utcnow().isoformat()
+            
             logger.info("Application created successfully", 
-                       application_id=full_record.data[0]["id"], 
+                       application_id=record["id"], 
                        job_id=str(application_data.job_description_id),
                        candidate_id=str(candidate_id))
-            return full_record.data[0]
+            return record
             
         except Exception as e:
             logger.error("Error creating application", error=str(e), exc_info=True, 
@@ -173,6 +193,9 @@ class ApplicationService:
             # Verify recruiter owns the job
             job = db.service_client.table("job_descriptions").select("id").eq("id", str(job_description_id)).eq("recruiter_id", str(recruiter_id)).execute()
             if not job.data:
+                logger.warning("Job not found or not owned by recruiter", 
+                              job_id=str(job_description_id), 
+                              recruiter_id=str(recruiter_id))
                 raise NotFoundError("Job description", str(job_description_id))
             
             query = db.service_client.table("job_applications").select("*, candidates!inner(*), cvs(*)").eq("job_description_id", str(job_description_id))

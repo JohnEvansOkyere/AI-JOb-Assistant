@@ -72,10 +72,11 @@ async def apply_for_job(
         
         # Upload to Supabase Storage
         storage_path = f"applications/{job_description_id}/{cv_file.filename}"
+        bucket_name = getattr(settings, 'supabase_storage_bucket_cvs', 'cvs')
+        
         try:
             with open(temp_file_path, 'rb') as f:
                 # Use the same bucket as CVs
-                bucket_name = getattr(settings, 'supabase_storage_bucket_cvs', 'cvs')
                 db.service_client.storage.from_(bucket_name).upload(
                     storage_path,
                     f.read(),
@@ -83,19 +84,27 @@ async def apply_for_job(
                 )
         except Exception as e:
             error_str = str(e)
-            logger.error("Error uploading CV", error=error_str, bucket=bucket_name)
             os.remove(temp_file_path)
             
-            # Provide helpful error message for missing bucket
-            if "bucket not found" in error_str.lower() or "404" in error_str:
+            # Handle duplicate file gracefully (409 Conflict)
+            if "409" in error_str or "duplicate" in error_str.lower() or "already exists" in error_str.lower():
+                logger.info("CV file already exists in storage, using existing file", 
+                           storage_path=storage_path, 
+                           bucket=bucket_name)
+                # File already exists, continue with the existing file
+                # No need to raise an error - we'll use the existing file path
+            elif "bucket not found" in error_str.lower() or "404" in error_str:
+                logger.error("Error uploading CV - bucket not found", error=error_str, bucket=bucket_name)
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"Storage bucket '{bucket_name}' not found. Please create the bucket in Supabase Storage. See documentation for setup instructions."
                 )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to upload CV: {error_str}"
-            )
+            else:
+                logger.error("Error uploading CV", error=error_str, bucket=bucket_name)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to upload CV: {error_str}"
+                )
         
         # Parse CV
         try:
@@ -293,7 +302,7 @@ async def list_all_applications(
 @router.get("/job/{job_description_id}", response_model=Response[List[dict]])
 async def list_applications(
     job_description_id: UUID,
-    status: Optional[str] = Query(None, description="Filter by status"),
+    application_status: Optional[str] = Query(None, description="Filter by status", alias="status"),
     recruiter_id: UUID = Depends(get_current_user_id)
 ):
     """
@@ -301,7 +310,7 @@ async def list_applications(
     
     Args:
         job_description_id: Job description ID
-        status: Optional status filter
+        application_status: Optional status filter (aliased as 'status' in query)
         recruiter_id: Current user ID
     
     Returns:
@@ -311,7 +320,7 @@ async def list_applications(
         applications = await ApplicationService.list_applications_for_job(
             job_description_id=job_description_id,
             recruiter_id=recruiter_id,
-            status=status
+            status=application_status
         )
         return Response(
             success=True,
@@ -319,7 +328,7 @@ async def list_applications(
             data=applications
         )
     except Exception as e:
-        logger.error("Error listing applications", error=str(e))
+        logger.error("Error listing applications", error=str(e), job_id=str(job_description_id), recruiter_id=str(recruiter_id))
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e)

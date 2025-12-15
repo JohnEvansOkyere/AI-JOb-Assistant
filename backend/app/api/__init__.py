@@ -15,6 +15,7 @@ from .application_forms import router as application_forms_router
 from .stats import router as stats_router
 from .candidates import router as candidates_router
 from .rankings import router as rankings_router
+from .voice import router as voice_router
 
 __all__ = [
     "auth_router",
@@ -29,4 +30,5 @@ __all__ = [
     "stats_router",
     "candidates_router",
     "rankings_router",
+    "voice_router",
 ]

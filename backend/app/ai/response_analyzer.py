@@ -103,11 +103,23 @@ class ResponseAnalyzer:
         }
         
         # Simple heuristics based on response length and keywords
-        response_lower = response.lower()
+        response_lower = response.lower().strip()
         response_length = len(response.split())
         
+        # Treat very short or clearly generic answers as weak so we trigger clarification
+        short_generic_phrases = {
+            "yes", "yeah", "yep", "okay", "ok", "sure",
+            "i dont want to talk about it",
+        }
+        if (
+            response_lower in {"no", "nope", "nah"}
+            or response_lower in short_generic_phrases
+            or response_length <= 8
+        ):
+            analysis["quality"] = "weak"
+            analysis["relevance_score"] = 20
         # Quality assessment
-        if response_length > 50 and any(word in response_lower for word in ["experience", "worked", "implemented", "achieved"]):
+        elif response_length > 50 and any(word in response_lower for word in ["experience", "worked", "implemented", "achieved"]):
             analysis["quality"] = "strong"
             analysis["relevance_score"] = 75
         elif response_length < 20:

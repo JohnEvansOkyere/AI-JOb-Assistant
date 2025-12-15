@@ -21,6 +21,7 @@ from app.api import (
     stats_router,
     candidates_router,
     rankings_router,
+    voice_router,
 )
 from app.utils.errors import (
     app_exception_handler,
@@ -121,6 +122,7 @@ app.include_router(application_forms_router)
 app.include_router(stats_router)
 app.include_router(candidates_router)
 app.include_router(rankings_router)
+app.include_router(voice_router)
 
 if __name__ == "__main__":
     import uvicorn

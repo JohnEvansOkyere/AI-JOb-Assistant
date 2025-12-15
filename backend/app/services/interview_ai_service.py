@@ -99,8 +99,9 @@ class InterviewAIService:
                     interview_id=interview_id,
                     **q
                 )
+                # Use JSON mode to ensure UUIDs and datetimes are serializable
                 db.service_client.table("interview_questions").insert(
-                    question_data.model_dump()
+                    question_data.model_dump(mode="json")
                 ).execute()
             
             logger.info("Generated initial questions", interview_id=str(interview_id), count=len(questions))
@@ -154,7 +155,7 @@ class InterviewAIService:
                 response_text=response_text
             )
             db.service_client.table("interview_responses").insert(
-                response_data.model_dump()
+                response_data.model_dump(mode="json")
             ).execute()
             
             logger.info("Processed response", interview_id=str(interview_id), question_id=str(question_id))
@@ -236,7 +237,7 @@ class InterviewAIService:
                 order_index=next_order
             )
             result = db.service_client.table("interview_questions").insert(
-                question_data.model_dump()
+                question_data.model_dump(mode="json")
             ).execute()
             
             return result.data[0] if result.data else None

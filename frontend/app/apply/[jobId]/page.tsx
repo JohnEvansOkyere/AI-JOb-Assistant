@@ -13,6 +13,16 @@ import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 import { JobDescription } from '@/types'
 
+interface PublicFormField {
+  field_key: string
+  field_label: string
+  field_type: string
+  field_options?: { options?: string[] }
+  is_required: boolean
+  placeholder?: string
+  help_text?: string
+}
+
 export default function ApplyPage() {
   const params = useParams()
   const router = useRouter()
@@ -31,15 +41,7 @@ export default function ApplyPage() {
     cover_letter: '',
   })
   const [cvFile, setCvFile] = useState<File | null>(null)
-  const [customFields, setCustomFields] = useState<Array<{
-    field_key: string
-    field_label: string
-    field_type: string
-    field_options?: { options?: string[] }
-    is_required: boolean
-    placeholder?: string
-    help_text?: string
-  }>>([])
+  const [customFields, setCustomFields] = useState<PublicFormField[]>([])
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, any>>({})
 
   useEffect(() => {
@@ -60,7 +62,7 @@ export default function ApplyPage() {
 
       // Load custom form fields
       try {
-        const fieldsResponse = await apiClient.get(`/application-forms/fields/job/${jobId}/public`)
+        const fieldsResponse = await apiClient.get<PublicFormField[]>(`/application-forms/fields/job/${jobId}/public`)
         if (fieldsResponse.success && fieldsResponse.data) {
           setCustomFields(fieldsResponse.data)
           // Initialize custom field values

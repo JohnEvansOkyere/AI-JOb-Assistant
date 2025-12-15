@@ -57,7 +57,7 @@ class TicketService:
             # Check for uniqueness (retry if collision)
             max_retries = 5
             for _ in range(max_retries):
-                existing = db.client.table("interview_tickets").select("id").eq("ticket_code", ticket_code).execute()
+                existing = db.service_client.table("interview_tickets").select("id").eq("ticket_code", ticket_code).execute()
                 if not existing.data:
                     break
                 ticket_code = TicketService.generate_ticket_code()
@@ -79,7 +79,7 @@ class TicketService:
                 "created_by": str(created_by)
             }
             
-            response = db.client.table("interview_tickets").insert(ticket_data).execute()
+            response = db.service_client.table("interview_tickets").insert(ticket_data).execute()
             
             if not response.data:
                 raise NotFoundError("Interview ticket", "creation failed")
@@ -107,7 +107,7 @@ class TicketService:
             ForbiddenError: If ticket is used or expired
         """
         try:
-            response = db.client.table("interview_tickets").select("*").eq("ticket_code", ticket_code).execute()
+            response = db.service_client.table("interview_tickets").select("*").eq("ticket_code", ticket_code).execute()
             
             if not response.data:
                 raise NotFoundError("Interview ticket", ticket_code)
@@ -127,7 +127,7 @@ class TicketService:
                 expires_at = datetime.fromisoformat(ticket["expires_at"].replace('Z', '+00:00'))
                 if datetime.utcnow() > expires_at.replace(tzinfo=None):
                     # Mark as expired
-                    db.client.table("interview_tickets").update({"is_expired": True}).eq("id", ticket["id"]).execute()
+                    db.service_client.table("interview_tickets").update({"is_expired": True}).eq("id", ticket["id"]).execute()
                     raise ForbiddenError("This ticket has expired")
             
             logger.info("Ticket validated", ticket_code=ticket_code)
@@ -151,7 +151,7 @@ class TicketService:
             True if successful
         """
         try:
-            response = db.client.table("interview_tickets").update({
+            response = db.service_client.table("interview_tickets").update({
                 "is_used": True,
                 "used_at": datetime.utcnow().isoformat()
             }).eq("id", str(ticket_id)).execute()
@@ -182,7 +182,7 @@ class TicketService:
             if not job.data:
                 raise NotFoundError("Job description", str(job_description_id))
             
-            response = db.client.table("interview_tickets").select("*").eq("job_description_id", str(job_description_id)).order("created_at", desc=True).execute()
+            response = db.service_client.table("interview_tickets").select("*").eq("job_description_id", str(job_description_id)).order("created_at", desc=True).execute()
             
             return response.data or []
             

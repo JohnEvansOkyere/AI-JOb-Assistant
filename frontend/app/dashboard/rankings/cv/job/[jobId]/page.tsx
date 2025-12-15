@@ -12,7 +12,15 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { apiClient } from '@/lib/api/client'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { User, Mail, Trophy, CheckCircle, Clock, XCircle } from 'lucide-react'
+import { User, Mail, Trophy } from 'lucide-react'
+
+interface Ticket {
+  id: string
+  candidate_id: string
+  job_description_id: string
+  ticket_code: string
+  created_at?: string
+}
 
 interface RankedCandidate {
   id: string
@@ -46,6 +54,7 @@ export default function JobRankingsPage() {
   const { isAuthenticated, loading: authLoading } = useAuth()
   
   const [candidates, setCandidates] = useState<RankedCandidate[]>([])
+  const [ticketsByCandidate, setTicketsByCandidate] = useState<Record<string, Ticket>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -73,6 +82,28 @@ export default function JobRankingsPage() {
       
       if (response.success && response.data) {
         setCandidates(response.data)
+        // Fetch existing tickets for this job to know which candidates already have tickets
+        try {
+          const ticketsResponse = await apiClient.get<Ticket[]>(`/tickets/job/${jobId}`)
+          if (ticketsResponse.success && ticketsResponse.data) {
+            const map: Record<string, Ticket> = {}
+            ticketsResponse.data.forEach((t) => {
+              const cid = t.candidate_id
+              if (!cid) return
+              const existing = map[cid]
+              // Prefer the most recent ticket if multiple; fall back to first
+              if (!existing) {
+                map[cid] = t
+              } else if (t.created_at && (!existing.created_at || t.created_at > existing.created_at)) {
+                map[cid] = t
+              }
+            })
+            setTicketsByCandidate(map)
+          }
+        } catch (ticketErr) {
+          // Don't block rankings view if tickets API fails; just log in console
+          console.error('Failed to load tickets for rankings view', ticketErr)
+        }
       } else {
         setError(response.message || 'Failed to load rankings')
       }
@@ -239,15 +270,33 @@ export default function JobRankingsPage() {
                     >
                       View Details
                     </Button>
-                    {candidate.cv_screening_results?.recommendation === 'qualified' && (
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => router.push(`/dashboard/jobs/${jobId}/applications/${candidate.id}/create-ticket`)}
-                      >
-                        Issue Ticket
-                      </Button>
-                    )}
+                    {(() => {
+                      const ticket = ticketsByCandidate[candidate.candidate_id]
+                      if (ticket) {
+                        return (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled
+                            className="cursor-default"
+                          >
+                            Ticket: {ticket.ticket_code}
+                          </Button>
+                        )
+                      }
+                      if (candidate.cv_screening_results?.recommendation === 'qualified') {
+                        return (
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => router.push(`/dashboard/jobs/${jobId}/applications/${candidate.id}/create-ticket`)}
+                          >
+                            Issue Ticket
+                          </Button>
+                        )
+                      }
+                      return null
+                    })()}
                   </div>
                 </div>
               </Card>

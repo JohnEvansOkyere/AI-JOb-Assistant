@@ -3,7 +3,7 @@ Interview Tickets API Routes
 Ticket generation and validation endpoints
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from typing import Optional
 from uuid import UUID
 from app.schemas.common import Response
@@ -20,8 +20,8 @@ router = APIRouter(prefix="/tickets", tags=["tickets"])
 
 @router.post("", response_model=Response[InterviewTicket], status_code=status.HTTP_201_CREATED)
 async def create_ticket(
-    candidate_id: UUID,
-    job_description_id: UUID,
+    candidate_id: UUID = Body(..., description="Candidate ID"),
+    job_description_id: UUID = Body(..., description="Job description ID"),
     expires_in_hours: Optional[int] = Query(None, description="Expiration time in hours"),
     recruiter_id: UUID = Depends(get_current_user_id)
 ):
@@ -29,9 +29,9 @@ async def create_ticket(
     Create a new interview ticket
     
     Args:
-        candidate_id: Candidate ID
-        job_description_id: Job description ID
-        expires_in_hours: Optional expiration time in hours
+        candidate_id: Candidate ID (request body)
+        job_description_id: Job description ID (request body)
+        expires_in_hours: Optional expiration time in hours (query param)
         recruiter_id: Current user ID (for authorization)
     
     Returns:

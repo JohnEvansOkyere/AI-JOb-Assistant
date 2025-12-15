@@ -206,7 +206,7 @@ export default function ApplicationDetailsPage() {
                 variant="primary"
                 onClick={() => router.push(`/dashboard/jobs/${jobId}/applications/${applicationId}/create-ticket`)}
               >
-                Create Interview Ticket
+                Issue Interview Ticket
               </Button>
             )}
           </div>
@@ -355,10 +355,23 @@ export default function ApplicationDetailsPage() {
 
               {application.cv_screening_results.screening_notes && (
                 <div>
-                  <label className="text-sm font-medium text-gray-700 mb-2 block">Screening Notes</label>
-                  <div className="p-3 bg-gray-50 rounded text-gray-900 whitespace-pre-wrap">
+                  <label className="text-sm font-medium text-gray-700 mb-2 block">AI Screening Analysis</label>
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded text-gray-900 whitespace-pre-wrap">
                     {application.cv_screening_results.screening_notes}
                   </div>
+                </div>
+              )}
+
+              {/* Action Button for Qualified Candidates */}
+              {application.cv_screening_results.recommendation === 'qualified' && (
+                <div className="pt-4 border-t">
+                  <Button
+                    variant="primary"
+                    onClick={() => router.push(`/dashboard/jobs/${jobId}/applications/${applicationId}/create-ticket`)}
+                    className="w-full"
+                  >
+                    Issue Interview Ticket
+                  </Button>
                 </div>
               )}
             </div>

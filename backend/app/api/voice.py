@@ -6,6 +6,7 @@ from app.config import settings
 from app.services.interview_service import InterviewService
 from app.services.interview_ai_service import InterviewAIService
 from app.services.ticket_service import TicketService
+from app.services.interview_report_service import InterviewReportService
 from app.database import db
 from app.utils.errors import NotFoundError, ForbiddenError
 from app.voice.stt_service import get_stt_provider
@@ -185,6 +186,12 @@ async def voice_interview(
                     answer_text,
                     job_description or {},
                     cv_text,
+                )
+
+                # Update / create interview-level report (non-blocking for UX if it fails)
+                await InterviewReportService.upsert_from_analysis(
+                    UUID(interview["id"]),
+                    analysis,
                 )
 
                 await websocket.send_text(

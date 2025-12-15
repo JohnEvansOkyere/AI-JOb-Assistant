@@ -13,6 +13,15 @@ import { apiClient } from '@/lib/api/client'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 
+interface CV {
+  id: string
+  file_name: string
+  file_path: string
+  file_size?: number
+  mime_type?: string
+  parsed_text?: string
+}
+
 interface Application {
   id: string
   candidate_id: string
@@ -44,6 +53,7 @@ interface Application {
     screening_notes?: string
     screened_at?: string
   }
+  cvs?: CV
 }
 
 export default function ApplicationDetailsPage() {
@@ -57,6 +67,8 @@ export default function ApplicationDetailsPage() {
   const [loading, setLoading] = useState(true)
   const [screening, setScreening] = useState(false)
   const [error, setError] = useState('')
+  const [cvDownloadUrl, setCvDownloadUrl] = useState<string | null>(null)
+  const [loadingCv, setLoadingCv] = useState(false)
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -84,7 +96,15 @@ export default function ApplicationDetailsPage() {
       if (response.success && response.data) {
         const app = response.data.find(a => a.id === applicationId)
         if (app) {
+          // Handle CV data that might come as array from Supabase nested select
+          if (app.cvs && Array.isArray(app.cvs) && app.cvs.length > 0) {
+            app.cvs = app.cvs[0]
+          }
           setApplication(app)
+          // Load CV download URL if CV exists
+          if (app.cv_id) {
+            loadCvDownloadUrl(app.cv_id)
+          }
         } else {
           setError('Application not found')
         }
@@ -95,6 +115,27 @@ export default function ApplicationDetailsPage() {
       setError(err.message || 'An error occurred')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadCvDownloadUrl = async (cvId: string) => {
+    try {
+      setLoadingCv(true)
+      const token = localStorage.getItem('auth_token')
+      if (token) {
+        apiClient.setToken(token)
+      }
+      
+      const response = await apiClient.get<{ download_url: string; file_name: string; mime_type: string }>(`/cvs/${cvId}/download-url`)
+      
+      if (response.success && response.data) {
+        setCvDownloadUrl(response.data.download_url)
+      }
+    } catch (err: any) {
+      console.error('Error loading CV download URL:', err)
+      // Don't show error to user, just log it
+    } finally {
+      setLoadingCv(false)
     }
   }
 
@@ -277,6 +318,68 @@ export default function ApplicationDetailsPage() {
             )}
           </div>
         </Card>
+
+        {/* CV Document */}
+        {application.cv_id && (
+          <Card>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">CV / Resume</h2>
+            <div className="space-y-3">
+              {application.cvs && (
+                <div>
+                  <label className="text-sm font-medium text-gray-700">File Name</label>
+                  <p className="text-gray-900">{application.cvs.file_name || 'CV Document'}</p>
+                  {application.cvs.file_size && (
+                    <p className="text-sm text-gray-600 mt-1">
+                      {(application.cvs.file_size / 1024).toFixed(2)} KB
+                    </p>
+                  )}
+                </div>
+              )}
+              <div className="flex gap-2">
+                {cvDownloadUrl ? (
+                  <>
+                    <Button
+                      variant="primary"
+                      onClick={() => window.open(cvDownloadUrl, '_blank')}
+                    >
+                      View CV
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const link = document.createElement('a')
+                        link.href = cvDownloadUrl
+                        link.download = application.cvs?.file_name || 'cv.pdf'
+                        link.click()
+                      }}
+                    >
+                      Download CV
+                    </Button>
+                  </>
+                ) : loadingCv ? (
+                  <Button variant="outline" disabled>
+                    Loading CV...
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    onClick={() => loadCvDownloadUrl(application.cv_id)}
+                  >
+                    Load CV
+                  </Button>
+                )}
+              </div>
+              {application.cvs?.parsed_text && (
+                <div className="mt-4">
+                  <label className="text-sm font-medium text-gray-700 mb-2 block">CV Text Content</label>
+                  <div className="p-3 bg-gray-50 rounded text-gray-900 whitespace-pre-wrap max-h-96 overflow-y-auto text-sm">
+                    {application.cvs.parsed_text}
+                  </div>
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
 
         {/* Screening Results */}
         {application.cv_screening_results && (

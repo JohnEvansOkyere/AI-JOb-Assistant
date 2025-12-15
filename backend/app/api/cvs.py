@@ -170,6 +170,93 @@ async def get_cv(cv_id: UUID):
         )
 
 
+@router.get("/{cv_id}/download-url", response_model=Response[dict])
+async def get_cv_download_url(
+    cv_id: UUID,
+    recruiter_id: UUID = Depends(get_current_user_id)
+):
+    """
+    Get a signed URL for downloading a CV file
+    
+    Args:
+        cv_id: CV ID
+        recruiter_id: Current user ID (for authorization)
+    
+    Returns:
+        Signed URL for CV download
+    """
+    try:
+        # Get CV data
+        cv = await CVService.get_cv(cv_id)
+        
+        # Verify recruiter has access (check if CV is linked to recruiter's job)
+        if cv.get("job_description_id"):
+            job = db.service_client.table("job_descriptions").select("recruiter_id").eq("id", cv["job_description_id"]).execute()
+            if job.data and str(job.data[0]["recruiter_id"]) != str(recruiter_id):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied"
+                )
+        
+        # Get file path
+        file_path = cv.get("file_path")
+        if not file_path:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="CV file path not found"
+            )
+        
+        # Generate signed URL (valid for 1 hour)
+        bucket_name = settings.supabase_storage_bucket_cvs
+        try:
+            # Create signed URL using Supabase storage
+            # Supabase returns a dict with 'signedURL' key
+            signed_url_response = db.service_client.storage.from_(bucket_name).create_signed_url(
+                file_path,
+                3600  # 1 hour expiry
+            )
+            
+            # Handle both dict response and string response
+            if isinstance(signed_url_response, dict):
+                signed_url = signed_url_response.get("signedURL") or signed_url_response.get("url") or signed_url_response.get("signed_url")
+            else:
+                signed_url = signed_url_response
+            
+            if not signed_url:
+                raise ValueError("Failed to extract signed URL from response")
+            
+            return Response(
+                success=True,
+                message="CV download URL generated successfully",
+                data={
+                    "download_url": signed_url,
+                    "file_name": cv.get("file_name", "cv.pdf"),
+                    "mime_type": cv.get("mime_type", "application/pdf")
+                }
+            )
+        except Exception as storage_error:
+            logger.error("Error generating signed URL", error=str(storage_error), cv_id=str(cv_id), exc_info=True)
+            # Fallback: try to construct public URL if bucket is public
+            public_url = f"{settings.supabase_url}/storage/v1/object/public/{bucket_name}/{file_path}"
+            return Response(
+                success=True,
+                message="CV download URL generated (public)",
+                data={
+                    "download_url": public_url,
+                    "file_name": cv.get("file_name", "cv.pdf"),
+                    "mime_type": cv.get("mime_type", "application/pdf")
+                }
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error generating CV download URL", error=str(e), cv_id=str(cv_id))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
 @router.get("/job/{job_description_id}", response_model=Response[list])
 async def list_cvs_for_job(
     job_description_id: UUID,

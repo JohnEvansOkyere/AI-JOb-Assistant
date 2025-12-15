@@ -62,10 +62,15 @@ export default function ApplyPage() {
 
       // Load custom form fields
       try {
-        const fieldsResponse = await apiClient.get<PublicFormField[]>(`/application-forms/fields/job/${jobId}/public`)
-        if (fieldsResponse.success && fieldsResponse.data) {
-          // Explicitly cast because apiClient's generic type is not inferred correctly in some builds
-          setCustomFields(fieldsResponse.data as PublicFormField[])
+        // Use explicit any typing here because our apiClient generic type isn't always inferred correctly
+        const fieldsResponse: {
+          success: boolean
+          data?: unknown
+        } = await apiClient.get(`/application-forms/fields/job/${jobId}/public`)
+
+        if (fieldsResponse.success && Array.isArray(fieldsResponse.data)) {
+          const fields = fieldsResponse.data as PublicFormField[]
+          setCustomFields(fields)
           // Initialize custom field values
           const initialValues: Record<string, any> = {}
           fieldsResponse.data.forEach((field: any) => {

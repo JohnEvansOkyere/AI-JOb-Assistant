@@ -145,3 +145,25 @@ async def list_interviews_for_job(
             detail=str(e)
         )
 
+
+@router.get("", response_model=Response[list])
+async def list_interviews_with_reports(
+    recruiter_id: UUID = Depends(get_current_user_id),
+):
+    """
+    List interviews for all jobs owned by the current recruiter, including AI report data.
+    """
+    try:
+        interviews = await InterviewService.list_interviews_with_reports_for_recruiter(recruiter_id)
+        return Response(
+            success=True,
+            message="Interviews with reports retrieved successfully",
+            data=interviews,
+        )
+    except Exception as e:
+        logger.error("Error listing interviews with reports", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
+

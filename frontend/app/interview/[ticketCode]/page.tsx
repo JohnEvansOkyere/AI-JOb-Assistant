@@ -27,6 +27,7 @@ export default function InterviewPage() {
   const [currentInput, setCurrentInput] = useState('')
   const [currentQuestionId, setCurrentQuestionId] = useState<string | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
+  const [waitingForAI, setWaitingForAI] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -53,6 +54,7 @@ export default function InterviewPage() {
         setConnected(true)
         setConnecting(false)
         setWs(socket)
+        setWaitingForAI(true)
         socket.send(JSON.stringify({ type: 'start' }))
       }
 
@@ -60,6 +62,7 @@ export default function InterviewPage() {
         try {
           const data = JSON.parse(event.data)
           if (data.type === 'question') {
+            setWaitingForAI(false)
             setCurrentQuestionId(data.question_id)
             setMessages((prev) => [
               ...prev,
@@ -69,8 +72,10 @@ export default function InterviewPage() {
             // Keep analysis internal for scoring; do not show raw JSON to the candidate
             return
           } else if (data.type === 'info') {
+            setWaitingForAI(false)
             setMessages((prev) => [...prev, { role: 'system', text: data.message }])
           } else if (data.type === 'error') {
+            setWaitingForAI(false)
             setError(data.message || 'Interview error')
             setMessages((prev) => [...prev, { role: 'system', text: `Error: ${data.message}` }])
           }
@@ -101,6 +106,7 @@ export default function InterviewPage() {
     const text = currentInput.trim()
     setMessages((prev) => [...prev, { role: 'user', text }])
     setCurrentInput('')
+    setWaitingForAI(true)
 
     ws.send(
       JSON.stringify({
@@ -165,15 +171,26 @@ export default function InterviewPage() {
             <div ref={messagesEndRef} />
           </div>
 
+          {waitingForAI && (
+            <div className="flex items-center gap-2 mb-3 text-xs text-gray-500">
+              <div className="h-4 w-4 border-2 border-gray-300 border-t-primary-500 rounded-full animate-spin" />
+              <span>AI is thinking and preparing the next question...</span>
+            </div>
+          )}
+
           <div className="flex gap-2">
             <Input
               type="text"
               placeholder={
-                connected ? 'Type your answer here...' : 'Click "Start Interview" to begin'
+                connected
+                  ? waitingForAI
+                    ? 'Waiting for the next question...'
+                    : 'Type your answer here...'
+                  : 'Click "Start Interview" to begin'
               }
               value={currentInput}
               onChange={(e) => setCurrentInput(e.target.value)}
-              disabled={!connected}
+              disabled={!connected || waitingForAI}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault()
@@ -181,7 +198,11 @@ export default function InterviewPage() {
                 }
               }}
             />
-            <Button variant="primary" onClick={handleSend} disabled={!connected || !currentInput}>
+            <Button
+              variant="primary"
+              onClick={handleSend}
+              disabled={!connected || waitingForAI || !currentInput}
+            >
               Send
             </Button>
           </div>

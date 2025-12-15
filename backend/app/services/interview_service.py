@@ -214,3 +214,78 @@ class InterviewService:
             logger.error("Error listing interviews", error=str(e), job_id=str(job_description_id))
             raise
 
+    @staticmethod
+    async def list_interviews_with_reports_for_recruiter(recruiter_id: UUID) -> list:
+        """
+        List interviews for all jobs owned by a recruiter, including basic report + candidate info.
+        """
+        try:
+            # Get recruiter's jobs
+            jobs_resp = (
+                db.service_client.table("job_descriptions")
+                .select("id, title")
+                .eq("recruiter_id", str(recruiter_id))
+                .execute()
+            )
+            jobs = jobs_resp.data or []
+            if not jobs:
+                return []
+
+            job_map = {j["id"]: j for j in jobs}
+            job_ids = list(job_map.keys())
+
+            # Get interviews for those jobs
+            interviews_resp = (
+                db.service_client.table("interviews")
+                .select("*")
+                .in_("job_description_id", job_ids)
+                .order("created_at", desc=True)
+                .execute()
+            )
+            interviews = interviews_resp.data or []
+            if not interviews:
+                return []
+
+            interview_ids = [i["id"] for i in interviews]
+            candidate_ids = {i["candidate_id"] for i in interviews}
+
+            # Get reports
+            reports_resp = (
+                db.service_client.table("interview_reports")
+                .select("*")
+                .in_("interview_id", interview_ids)
+                .execute()
+            )
+            reports = {r["interview_id"]: r for r in (reports_resp.data or [])}
+
+            # Get candidates
+            candidates_resp = (
+                db.service_client.table("candidates")
+                .select("id, full_name, email")
+                .in_("id", list(candidate_ids))
+                .execute()
+            )
+            candidates = {c["id"]: c for c in (candidates_resp.data or [])}
+
+            # Combine
+            combined = []
+            for interview in interviews:
+                job = job_map.get(interview["job_description_id"])
+                candidate = candidates.get(interview["candidate_id"])
+                report = reports.get(interview["id"])
+
+                combined.append(
+                    {
+                        **interview,
+                        "job_title": job["title"] if job else None,
+                        "candidate": candidate,
+                        "report": report,
+                    }
+                )
+
+            return combined
+
+        except Exception as e:
+            logger.error("Error listing interviews with reports", error=str(e), recruiter_id=str(recruiter_id))
+            raise
+

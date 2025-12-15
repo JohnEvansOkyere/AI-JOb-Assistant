@@ -77,6 +77,12 @@ class InterviewReportService:
                 analysis.get("alignment_score") or analysis.get("relevance_score")
             )
 
+            # Provide simple fallbacks when AI did not return detailed lists
+            if quality == "strong" and not strengths:
+                strengths = ["Provides clear, detailed responses aligned with role requirements"]
+            if quality == "weak" and not weaknesses:
+                weaknesses = ["Responses are brief or lack specific, concrete examples"]
+
             if existing:
                 # Merge into existing report
                 update_data = InterviewReportUpdate(

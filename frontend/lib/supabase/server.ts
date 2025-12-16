@@ -16,27 +16,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
 export async function createServerClient() {
   const cookieStore = await cookies()
   
+  // Create standard Supabase client for server-side
+  // Note: This is a simplified version. For full auth support, consider using @supabase/auth-helpers-nextjs
   return createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
-      getSession: async () => {
-        const accessToken = cookieStore.get('sb-access-token')?.value
-        const refreshToken = cookieStore.get('sb-refresh-token')?.value
-        
-        if (!accessToken || !refreshToken) {
-          return { data: { session: null }, error: null }
-        }
-        
-        // Return session from cookies
-        return {
-          data: {
-            session: {
-              access_token: accessToken,
-              refresh_token: refreshToken,
-            }
-          },
-          error: null
-        }
-      },
+      persistSession: false,
+      autoRefreshToken: false,
     },
   })
 }

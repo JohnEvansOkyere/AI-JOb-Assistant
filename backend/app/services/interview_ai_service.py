@@ -171,7 +171,8 @@ class InterviewAIService:
         job_description: Dict[str, Any],
         cv_text: str,
         previous_question_id: UUID,
-        response_quality: str
+        response_quality: str,
+        previous_response_text: str = ""
     ) -> Dict[str, Any]:
         """
         Generate follow-up question based on previous response
@@ -194,34 +195,49 @@ class InterviewAIService:
             
             prev_q = prev_question.data[0]
             skill_category = prev_q.get("skill_category")
+            previous_question_text = prev_q.get("question_text", "")
+            
+            # Get the candidate's response to the previous question
+            if not previous_response_text:
+                response_data = db.service_client.table("interview_responses").select("response_text").eq("question_id", str(previous_question_id)).order("created_at", desc=True).limit(1).execute()
+                if response_data.data:
+                    previous_response_text = response_data.data[0].get("response_text", "")
             
             # Get all previous questions
             all_questions = db.service_client.table("interview_questions").select("question_text").eq("interview_id", str(interview_id)).execute()
             previous_questions = [q["question_text"] for q in (all_questions.data or [])]
             
-            # Generate adaptive question
+            # Generate adaptive question with acknowledgment
             if response_quality == "weak" and skill_category:
-                question_text = await self.question_generator.generate_adaptive_question(
+                question_text = await self.question_generator.generate_adaptive_question_with_acknowledgment(
                     job_description,
                     cv_text,
                     skill_category,
                     "weak",
-                    previous_questions
+                    previous_questions,
+                    previous_question_text,
+                    previous_response_text
                 )
             else:
-                # Generate next skill or experience question
+                # Generate next skill or experience question with acknowledgment
                 if skill_category:
-                    question_text = await self.question_generator.generate_skill_question(
+                    question_text = await self.question_generator.generate_skill_question_with_acknowledgment(
                         job_description,
                         cv_text,
                         skill_category,
-                        previous_questions
+                        previous_questions,
+                        previous_question_text,
+                        previous_response_text,
+                        response_quality
                     )
                 else:
-                    question_text = await self.question_generator.generate_experience_question(
+                    question_text = await self.question_generator.generate_experience_question_with_acknowledgment(
                         job_description,
                         cv_text,
-                        previous_questions
+                        previous_questions,
+                        previous_question_text,
+                        previous_response_text,
+                        response_quality
                     )
             
             # Get next order index

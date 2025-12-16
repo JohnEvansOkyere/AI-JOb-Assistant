@@ -87,7 +87,14 @@ AI-JOb-Assistant/
 
 ## Getting Started
 
-See individual phase documentation in `docs/` directory.
+
+## Key Documentation
+
+- **Phase Documentation**: See `docs/PHASE_*.md` for detailed implementation guides
+- **Interview Link System**: See `docs/INTERVIEW_LINK_SYSTEM.md` for job-specific interview link sharing
+- **Text Interview Robustness**: See `docs/TEXT_INTERVIEW_ROBUSTNESS.md` for production-ready improvements
+- **Enterprise Readiness**: See `docs/ENTERPRISE_READINESS.md` for production deployment checklist
+- **Error Documentation**: See `docs/ERRORS_AND_SOLUTIONS.md` for error tracking by phase
 
 ## Features
 

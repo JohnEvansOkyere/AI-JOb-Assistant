@@ -235,6 +235,144 @@ class QuestionGenerator:
             logger.error("Error generating adaptive question", error=str(e))
             return await self.generate_skill_question(job_description, cv_text, skill_category, previous_questions)
     
+    async def generate_skill_question_with_acknowledgment(
+        self,
+        job_description: Dict[str, Any],
+        cv_text: str,
+        skill_category: str,
+        previous_questions: Optional[List[str]],
+        previous_question_text: str,
+        previous_response_text: str,
+        response_quality: str
+    ) -> str:
+        """
+        Generate skill question that acknowledges the candidate's previous response
+        
+        Args:
+            job_description: Job description data
+            cv_text: Candidate CV text
+            skill_category: Skill category
+            previous_questions: List of previously asked questions
+            previous_question_text: The previous question that was asked
+            previous_response_text: The candidate's response to the previous question
+            response_quality: Quality of previous response
+        
+        Returns:
+            Generated question text with acknowledgment
+        """
+        try:
+            prompt = self.prompts.get_skill_question_with_acknowledgment_prompt(
+                job_description,
+                cv_text,
+                skill_category,
+                previous_questions or [],
+                previous_question_text,
+                previous_response_text,
+                response_quality
+            )
+            question = await self.provider.generate_completion(
+                prompt=prompt,
+                system_prompt=self.prompts.SYSTEM_PROMPT,
+                max_tokens=300,
+                temperature=0.8  # Higher temperature for more natural conversation
+            )
+            return question.strip()
+        except Exception as e:
+            logger.error("Error generating skill question with acknowledgment", error=str(e))
+            # Fallback: simple acknowledgment + question
+            return f"Thank you for that. Can you tell us more about your experience with {skill_category}?"
+
+    async def generate_experience_question_with_acknowledgment(
+        self,
+        job_description: Dict[str, Any],
+        cv_text: str,
+        previous_questions: Optional[List[str]],
+        previous_question_text: str,
+        previous_response_text: str,
+        response_quality: str
+    ) -> str:
+        """
+        Generate experience question that acknowledges the candidate's previous response
+        
+        Args:
+            job_description: Job description data
+            cv_text: Candidate CV text
+            previous_questions: List of previously asked questions
+            previous_question_text: The previous question that was asked
+            previous_response_text: The candidate's response to the previous question
+            response_quality: Quality of previous response
+        
+        Returns:
+            Generated question text with acknowledgment
+        """
+        try:
+            prompt = self.prompts.get_experience_question_with_acknowledgment_prompt(
+                job_description,
+                cv_text,
+                previous_questions or [],
+                previous_question_text,
+                previous_response_text,
+                response_quality
+            )
+            question = await self.provider.generate_completion(
+                prompt=prompt,
+                system_prompt=self.prompts.SYSTEM_PROMPT,
+                max_tokens=300,
+                temperature=0.8
+            )
+            return question.strip()
+        except Exception as e:
+            logger.error("Error generating experience question with acknowledgment", error=str(e))
+            # Fallback
+            return "That's helpful context. Can you walk us through one of your most relevant projects and explain your role and contributions?"
+
+    async def generate_adaptive_question_with_acknowledgment(
+        self,
+        job_description: Dict[str, Any],
+        cv_text: str,
+        skill_category: str,
+        previous_response_quality: str,
+        previous_questions: Optional[List[str]],
+        previous_question_text: str,
+        previous_response_text: str
+    ) -> str:
+        """
+        Generate adaptive question that acknowledges the candidate's previous response
+        
+        Args:
+            job_description: Job description data
+            cv_text: Candidate CV text
+            skill_category: Skill category
+            previous_response_quality: Quality of previous response
+            previous_questions: List of previously asked questions
+            previous_question_text: The previous question that was asked
+            previous_response_text: The candidate's response to the previous question
+        
+        Returns:
+            Generated question text with acknowledgment
+        """
+        try:
+            prompt = self.prompts.get_adaptive_question_with_acknowledgment_prompt(
+                job_description,
+                cv_text,
+                skill_category,
+                previous_response_quality,
+                previous_questions or [],
+                previous_question_text,
+                previous_response_text
+            )
+            question = await self.provider.generate_completion(
+                prompt=prompt,
+                system_prompt=self.prompts.SYSTEM_PROMPT,
+                max_tokens=300,
+                temperature=0.8
+            )
+            return question.strip()
+        except Exception as e:
+            logger.error("Error generating adaptive question with acknowledgment", error=str(e))
+            # Fallback
+            return f"I appreciate your response. Let me ask you a bit more about {skill_category} - can you share a specific example?"
+
     def estimate_tokens(self, text: str) -> int:
         """Estimate token count for text"""
         return self.provider.get_token_count(text)

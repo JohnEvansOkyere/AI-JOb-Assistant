@@ -12,6 +12,8 @@ import { apiClient } from '@/lib/api/client'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
+import { Copy, Link as LinkIcon, Check } from 'lucide-react'
+import { getInterviewLink, copyToClipboard } from '@/lib/utils/interview'
 
 interface Application {
   id: string
@@ -32,6 +34,8 @@ export default function CreateTicketPage() {
   const [error, setError] = useState('')
   const [ticketCode, setTicketCode] = useState('')
   const [expiresInHours, setExpiresInHours] = useState(48)
+  const [copiedCode, setCopiedCode] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(false)
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -77,7 +81,7 @@ export default function CreateTicketPage() {
         return
       }
 
-      const response = await apiClient.post(`/tickets?expires_in_hours=${expiresInHours}`, {
+      const response = await apiClient.post<{ ticket_code: string }>(`/tickets?expires_in_hours=${expiresInHours}`, {
         candidate_id: app.candidate_id,
         job_description_id: jobId
       })
@@ -109,7 +113,25 @@ export default function CreateTicketPage() {
     return null
   }
 
+  const handleCopyCode = async () => {
+    const success = await copyToClipboard(ticketCode)
+    if (success) {
+      setCopiedCode(true)
+      setTimeout(() => setCopiedCode(false), 2000)
+    }
+  }
+
+  const handleCopyLink = async () => {
+    const link = getInterviewLink(ticketCode)
+    const success = await copyToClipboard(link)
+    if (success) {
+      setCopiedLink(true)
+      setTimeout(() => setCopiedLink(false), 2000)
+    }
+  }
+
   if (ticketCode) {
+    const interviewLink = getInterviewLink(jobId)
     return (
       <div className="min-h-screen bg-gray-50">
         <header className="bg-white shadow">
@@ -120,24 +142,85 @@ export default function CreateTicketPage() {
 
         <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card>
-            <div className="text-center py-8">
-              <div className="mb-6">
-                <div className="inline-block bg-primary-100 rounded-lg p-6 mb-4">
-                  <p className="text-sm text-gray-600 mb-2">Interview Ticket Code</p>
-                  <p className="text-3xl font-bold text-primary-700 font-mono">{ticketCode}</p>
+            <div className="py-8 space-y-6">
+              {/* Ticket Code */}
+              <div className="text-center">
+                <p className="text-sm text-gray-600 mb-3">Interview Ticket Code</p>
+                <div className="flex items-center justify-center gap-2 mb-4">
+                  <div className="bg-primary-100 rounded-lg px-6 py-4 inline-block">
+                    <p className="text-3xl font-bold text-primary-700 font-mono">{ticketCode}</p>
+                  </div>
+                  <button
+                    onClick={handleCopyCode}
+                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="Copy ticket code"
+                  >
+                    {copiedCode ? (
+                      <Check className="w-5 h-5 text-green-600" />
+                    ) : (
+                      <Copy className="w-5 h-5 text-gray-600" />
+                    )}
+                  </button>
                 </div>
               </div>
+
+              {/* Interview Link */}
+              <div className="border-t pt-6">
+                <p className="text-sm text-gray-600 mb-3 text-center">Interview Link</p>
+                <div className="flex items-center gap-2 mb-4 bg-gray-50 rounded-lg p-3 border border-gray-200">
+                  <LinkIcon className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                  <p className="text-sm text-gray-700 flex-1 truncate font-mono">{interviewLink}</p>
+                  <button
+                    onClick={handleCopyLink}
+                    className="p-1.5 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+                    title="Copy interview link"
+                  >
+                    {copiedLink ? (
+                      <Check className="w-4 h-4 text-green-600" />
+                    ) : (
+                      <Copy className="w-4 h-4 text-gray-600" />
+                    )}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 text-center mb-6">
+                  Share this link with all candidates for this job position. Each candidate will enter their unique ticket code to start their interview.
+                </p>
+              </div>
               
-              <p className="text-gray-600 mb-6">
-                Share this ticket code with the candidate. They can use it to start their interview.
-              </p>
-              
-              <div className="flex gap-4 justify-center">
+              <div className="flex gap-4 justify-center pt-4 border-t">
                 <Button
                   variant="outline"
-                  onClick={() => navigator.clipboard.writeText(ticketCode)}
+                  onClick={handleCopyCode}
+                  className="flex items-center gap-2"
                 >
-                  Copy Code
+                  {copiedCode ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Code Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" />
+                      <span>Copy Code</span>
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleCopyLink}
+                  className="flex items-center gap-2"
+                >
+                  {copiedLink ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Link Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <LinkIcon className="w-4 h-4" />
+                      <span>Copy Link</span>
+                    </>
+                  )}
                 </Button>
                 <Button
                   variant="primary"

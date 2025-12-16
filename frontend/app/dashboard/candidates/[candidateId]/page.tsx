@@ -13,6 +13,7 @@ import { apiClient } from '@/lib/api/client'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { User, Mail, Phone, Briefcase, Calendar, CheckCircle, Clock, XCircle } from 'lucide-react'
+import { formatDateReadable } from '@/lib/utils/date'
 
 interface Application {
   id: string
@@ -199,7 +200,7 @@ export default function CandidateDetailsPage() {
               <div>
                 <label className="text-sm font-medium text-gray-700">Member Since</label>
                 <p className="text-gray-900">
-                  {new Date(candidate.created_at).toLocaleDateString()}
+                  {formatDateReadable(candidate.created_at)}
                 </p>
               </div>
             </div>
@@ -229,7 +230,7 @@ export default function CandidateDetailsPage() {
                         <span className={`text-xs px-2 py-1 rounded ${getStatusColor(app.status)}`}>
                           {app.status.charAt(0).toUpperCase() + app.status.slice(1)}
                         </span>
-                        {app.cv_screening_results && (
+                        {app.cv_screening_results?.recommendation && (
                           <span className={`text-xs px-2 py-1 rounded ${getRecommendationColor(app.cv_screening_results.recommendation)}`}>
                             {app.cv_screening_results.recommendation.replace('_', ' ').toUpperCase()}
                           </span>
@@ -237,29 +238,42 @@ export default function CandidateDetailsPage() {
                       </div>
                       <div className="flex items-center gap-2 text-sm text-gray-600">
                         <Calendar className="w-4 h-4" />
-                        <span>Applied: {new Date(app.applied_at).toLocaleDateString()}</span>
+                        <span>Applied: {formatDateReadable(app.applied_at)}</span>
                       </div>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => router.push(`/dashboard/jobs/${app.job_description_id}/applications/${app.id}`)}
-                    >
-                      View Application
-                    </Button>
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => router.push(`/dashboard/jobs/${app.job_description_id}/applications/${app.id}`)}
+                      >
+                        View Application
+                      </Button>
+                      {app.cv_screening_results?.recommendation === 'qualified' && (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => router.push(`/dashboard/jobs/${app.job_description_id}/applications/${app.id}/create-ticket`)}
+                        >
+                          Issue Ticket
+                        </Button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Screening Results */}
                   {app.cv_screening_results && (
                     <div className="mt-4 p-3 bg-gray-50 rounded space-y-2">
                       <div className="flex items-center gap-4">
-                        <div>
-                          <label className="text-sm font-medium text-gray-700">Match Score</label>
-                          <p className="text-lg font-bold text-green-600">
-                            {app.cv_screening_results.match_score}%
-                          </p>
-                        </div>
-                        {app.cv_screening_results.skill_match_score && (
+                        {app.cv_screening_results.match_score != null && (
+                          <div>
+                            <label className="text-sm font-medium text-gray-700">Match Score</label>
+                            <p className="text-lg font-bold text-green-600">
+                              {app.cv_screening_results.match_score}%
+                            </p>
+                          </div>
+                        )}
+                        {app.cv_screening_results.skill_match_score != null && (
                           <div>
                             <label className="text-sm font-medium text-gray-700">Skill Match</label>
                             <p className="text-sm font-semibold text-gray-900">

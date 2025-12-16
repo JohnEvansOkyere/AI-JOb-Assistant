@@ -77,10 +77,40 @@ async def validate_ticket(ticket_code: str):
         ticket_code: Ticket code to validate
     
     Returns:
-        Ticket validation result
+        Ticket validation result including basic candidate and job info
     """
     try:
         ticket = await TicketService.validate_ticket(ticket_code)
+
+        # Enrich with candidate and job information for nicer candidate UX
+        candidate_name = None
+        job_title = None
+
+        try:
+            candidate_resp = db.service_client.table("candidates").select("full_name").eq(
+                "id", str(ticket["candidate_id"])
+            ).execute()
+            if candidate_resp.data:
+                candidate_name = candidate_resp.data[0].get("full_name")
+        except Exception as e:
+            logger.warning(
+                "Failed to load candidate for ticket validation",
+                error=str(e),
+                candidate_id=str(ticket.get("candidate_id")),
+            )
+
+        try:
+            job_resp = db.service_client.table("job_descriptions").select("title").eq(
+                "id", str(ticket["job_description_id"])
+            ).execute()
+            if job_resp.data:
+                job_title = job_resp.data[0].get("title")
+        except Exception as e:
+            logger.warning(
+                "Failed to load job for ticket validation",
+                error=str(e),
+                job_id=str(ticket.get("job_description_id")),
+            )
         
         return Response(
             success=True,
@@ -89,7 +119,9 @@ async def validate_ticket(ticket_code: str):
                 "valid": True,
                 "ticket_id": ticket["id"],
                 "candidate_id": ticket["candidate_id"],
-                "job_description_id": ticket["job_description_id"]
+                "job_description_id": ticket["job_description_id"],
+                "candidate_name": candidate_name,
+                "job_title": job_title,
             }
         )
     except Exception as e:

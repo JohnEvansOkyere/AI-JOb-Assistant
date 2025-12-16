@@ -12,7 +12,8 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { apiClient } from '@/lib/api/client'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { User, Mail, Trophy } from 'lucide-react'
+import { User, Mail, Trophy, Copy, Link as LinkIcon, Check } from 'lucide-react'
+import { getInterviewLink, copyToClipboard } from '@/lib/utils/interview'
 
 interface Ticket {
   id: string
@@ -57,6 +58,8 @@ export default function JobRankingsPage() {
   const [ticketsByCandidate, setTicketsByCandidate] = useState<Record<string, Ticket>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [copiedTicketCode, setCopiedTicketCode] = useState<string | null>(null)
+  const [isCopiedLink, setIsCopiedLink] = useState(false)
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -128,6 +131,23 @@ export default function JobRankingsPage() {
     return 'bg-blue-100 text-blue-800 border-blue-300'
   }
 
+  const handleCopyTicketCode = async (ticketCode: string) => {
+    const success = await copyToClipboard(ticketCode)
+    if (success) {
+      setCopiedTicketCode(ticketCode)
+      setTimeout(() => setCopiedTicketCode(null), 2000)
+    }
+  }
+
+  const handleCopyInterviewLink = async () => {
+    const link = getInterviewLink(jobId)
+    const success = await copyToClipboard(link)
+    if (success) {
+      setIsCopiedLink(true)
+      setTimeout(() => setIsCopiedLink(false), 2000)
+    }
+  }
+
   if (authLoading || loading) {
     return (
       <DashboardLayout>
@@ -153,9 +173,28 @@ export default function JobRankingsPage() {
             <h1 className="text-2xl font-bold text-gray-900">CV Rankings</h1>
             <p className="text-gray-600 mt-1">Ranked by CV screening match score (highest first)</p>
           </div>
-          <Button variant="outline" onClick={() => router.push('/dashboard/rankings/cv')}>
-            Back to CV Rankings
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={handleCopyInterviewLink}
+              className="flex items-center gap-2"
+            >
+              {isCopiedLink ? (
+                <>
+                  <Check className="w-4 h-4" />
+                  <span>Link Copied!</span>
+                </>
+              ) : (
+                <>
+                  <LinkIcon className="w-4 h-4" />
+                  <span>Copy Interview Link</span>
+                </>
+              )}
+            </Button>
+            <Button variant="outline" onClick={() => router.push('/dashboard/rankings/cv')}>
+              Back to CV Rankings
+            </Button>
+          </div>
         </div>
 
         {error && (
@@ -262,7 +301,7 @@ export default function JobRankingsPage() {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-2 min-w-[200px]">
                     <Button
                       variant="outline"
                       size="sm"
@@ -273,15 +312,29 @@ export default function JobRankingsPage() {
                     {(() => {
                       const ticket = ticketsByCandidate[candidate.candidate_id]
                       if (ticket) {
+                        const isCopiedCode = copiedTicketCode === ticket.ticket_code
                         return (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled
-                            className="cursor-default"
-                          >
-                            Ticket: {ticket.ticket_code}
-                          </Button>
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-1 p-2 bg-gray-50 rounded border border-gray-200">
+                              <span className="text-xs font-mono text-gray-700 flex-1 truncate">
+                                {ticket.ticket_code}
+                              </span>
+                              <button
+                                onClick={() => handleCopyTicketCode(ticket.ticket_code)}
+                                className="p-1 hover:bg-gray-200 rounded transition-colors"
+                                title="Copy ticket code"
+                              >
+                                {isCopiedCode ? (
+                                  <Check className="w-3 h-3 text-green-600" />
+                                ) : (
+                                  <Copy className="w-3 h-3 text-gray-600" />
+                                )}
+                              </button>
+                            </div>
+                            <p className="text-xs text-gray-500 text-center">
+                              Use shared interview link above
+                            </p>
+                          </div>
                         )
                       }
                       if (candidate.cv_screening_results?.recommendation === 'qualified') {

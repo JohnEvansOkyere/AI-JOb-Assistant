@@ -257,6 +257,20 @@ class InterviewService:
                 .execute()
             )
             reports = {r["interview_id"]: r for r in (reports_resp.data or [])}
+            
+            # Backfill missing fields in reports (experience_level, recommendation_justification)
+            from app.services.interview_report_service import InterviewReportService
+            for interview_id in interview_ids:
+                report = reports.get(interview_id)
+                if report and (not report.get("experience_level") or not report.get("recommendation_justification")):
+                    # Backfill asynchronously (non-blocking)
+                    try:
+                        backfilled = await InterviewReportService.backfill_missing_fields(UUID(interview_id))
+                        if backfilled:
+                            reports[interview_id] = backfilled
+                    except Exception as e:
+                        logger.warning("Failed to backfill report", interview_id=interview_id, error=str(e))
+                        # Continue with existing report if backfill fails
 
             # Get candidates
             candidates_resp = (

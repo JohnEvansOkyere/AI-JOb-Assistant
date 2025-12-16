@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -17,6 +17,9 @@ export default function InterviewPage() {
   const params = useParams()
   const router = useRouter()
   const ticketCode = params.ticketCode as string
+  const searchParams = useSearchParams()
+  const candidateName = searchParams.get('name')
+  const jobTitle = searchParams.get('job')
 
   const [ws, setWs] = useState<WebSocket | null>(null)
   const [connected, setConnected] = useState(false)
@@ -28,6 +31,8 @@ export default function InterviewPage() {
   const [currentQuestionId, setCurrentQuestionId] = useState<string | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
   const [waitingForAI, setWaitingForAI] = useState(false)
+  const [waitingForFinalMessage, setWaitingForFinalMessage] = useState(false)
+  const [interviewComplete, setInterviewComplete] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -74,24 +79,62 @@ export default function InterviewPage() {
           } else if (data.type === 'info') {
             setWaitingForAI(false)
             setMessages((prev) => [...prev, { role: 'system', text: data.message }])
+          } else if (data.type === 'final_message_request') {
+            setWaitingForAI(false)
+            setWaitingForFinalMessage(true)
+            setMessages((prev) => [
+              ...prev,
+              { role: 'assistant', text: data.message },
+            ])
+          } else if (data.type === 'interview_complete') {
+            setWaitingForAI(false)
+            setWaitingForFinalMessage(false)
+            setInterviewComplete(true)
+            setMessages((prev) => [
+              ...prev,
+              { role: 'system', text: data.message },
+            ])
+            // Close connection after showing the message
+            setTimeout(() => {
+              if (socket.readyState === WebSocket.OPEN) {
+                socket.close()
+              }
+            }, 5000)
           } else if (data.type === 'error') {
             setWaitingForAI(false)
-            setError(data.message || 'Interview error')
-            setMessages((prev) => [...prev, { role: 'system', text: `Error: ${data.message}` }])
+            const errorMsg = data.message || 'An error occurred during the interview'
+            setError(errorMsg)
+            setMessages((prev) => [
+              ...prev,
+              { role: 'system', text: `⚠️ ${errorMsg}` },
+            ])
+            // If it's a critical error (invalid ticket, etc.), disable input
+            if (errorMsg.includes('Invalid ticket') || errorMsg.includes('expired') || errorMsg.includes('already been used')) {
+              setInterviewComplete(true)
+            }
           }
         } catch (e) {
           console.error('Failed to parse websocket message', e)
         }
       }
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         setConnected(false)
         setWs(null)
+        // Only show error if interview wasn't completed and wasn't a normal close
+        if (!interviewComplete && event.code !== 1000) {
+          if (event.code === 1006) {
+            setError('Connection lost. Please refresh the page and try again.')
+          } else {
+            setError('Connection closed unexpectedly. Please refresh the page and try again.')
+          }
+        }
       }
 
       socket.onerror = (event) => {
         console.error('WebSocket error', event)
-        setError('WebSocket connection error')
+        setError('Connection error. Please check your internet connection and try again.')
+        setWaitingForAI(false)
       }
     } catch (e: any) {
       console.error('Failed to open WebSocket', e)
@@ -102,19 +145,32 @@ export default function InterviewPage() {
 
   const handleSend = () => {
     if (!ws || ws.readyState !== WebSocket.OPEN || !currentInput.trim()) return
+    if (interviewComplete) return
 
     const text = currentInput.trim()
     setMessages((prev) => [...prev, { role: 'user', text }])
     setCurrentInput('')
-    setWaitingForAI(true)
 
-    ws.send(
-      JSON.stringify({
-        type: 'answer',
-        question_id: currentQuestionId,
-        text,
-      }),
-    )
+    if (waitingForFinalMessage) {
+      // Send final message
+      setWaitingForFinalMessage(false)
+      ws.send(
+        JSON.stringify({
+          type: 'final_message',
+          text,
+        }),
+      )
+    } else {
+      // Send regular answer
+      setWaitingForAI(true)
+      ws.send(
+        JSON.stringify({
+          type: 'answer',
+          question_id: currentQuestionId,
+          text,
+        }),
+      )
+    }
   }
 
   return (
@@ -127,6 +183,16 @@ export default function InterviewPage() {
               <p className="text-sm text-gray-600">
                 Ticket: <span className="font-mono">{ticketCode}</span>
               </p>
+              {candidateName && (
+                <p className="text-sm text-gray-600">
+                  Candidate: <span className="font-medium">{candidateName}</span>
+                </p>
+              )}
+              {jobTitle && (
+                <p className="text-sm text-gray-600">
+                  Interview for: <span className="font-medium">{jobTitle}</span>
+                </p>
+              )}
             </div>
             <Button
               variant="primary"
@@ -178,21 +244,33 @@ export default function InterviewPage() {
             </div>
           )}
 
+          {interviewComplete && (
+            <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-sm text-green-800 font-medium">
+                Interview completed. Thank you for your time!
+              </p>
+            </div>
+          )}
+
           <div className="flex gap-2">
             <Input
               type="text"
               placeholder={
-                connected
-                  ? waitingForAI
-                    ? 'Waiting for the next question...'
-                    : 'Type your answer here...'
-                  : 'Click "Start Interview" to begin'
+                interviewComplete
+                  ? 'Interview completed'
+                  : connected
+                    ? waitingForFinalMessage
+                      ? 'Share any final thoughts or questions...'
+                      : waitingForAI
+                        ? 'Waiting for the next question...'
+                        : 'Type your answer here...'
+                    : 'Click "Start Interview" to begin'
               }
               value={currentInput}
               onChange={(e) => setCurrentInput(e.target.value)}
-              disabled={!connected || waitingForAI}
+              disabled={!connected || waitingForAI || interviewComplete}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') {
+                if (e.key === 'Enter' && !interviewComplete) {
                   e.preventDefault()
                   handleSend()
                 }
@@ -201,9 +279,9 @@ export default function InterviewPage() {
             <Button
               variant="primary"
               onClick={handleSend}
-              disabled={!connected || waitingForAI || !currentInput}
+              disabled={!connected || waitingForAI || interviewComplete || !currentInput}
             >
-              Send
+              {waitingForFinalMessage ? 'Send Final Message' : 'Send'}
             </Button>
           </div>
         </Card>

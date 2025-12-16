@@ -90,7 +90,7 @@ export default function JobApplicationsPage() {
       const response = await apiClient.post(`/applications/job/${jobId}/screen-all`)
       
       if (response.success) {
-        const data = response.data || {}
+        const data = (response.data || {}) as { screened?: number; qualified?: number; maybe_qualified?: number; not_qualified?: number }
         const message = `Screening completed!\n\n` +
           `✅ Screened: ${data.screened || 0}\n` +
           `✅ Qualified: ${data.qualified || 0}\n` +
@@ -120,7 +120,7 @@ export default function JobApplicationsPage() {
       const response = await apiClient.post(`/applications/${applicationId}/screen`)
       
       if (response.success) {
-        const result = response.data
+        const result = (response.data || {}) as { recommendation?: string; match_score?: number }
         const recommendation = result?.recommendation || 'unknown'
         const matchScore = result?.match_score || 0
         const message = `Screening completed!\n\n` +

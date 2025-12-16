@@ -50,8 +50,6 @@ uvicorn app.main:app --reload
 
 ## Environment Variables
 
-See `.env.example` for required variables.
-
 ## API Documentation
 
 Once running, visit:

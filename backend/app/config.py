@@ -41,8 +41,8 @@ class Settings(BaseSettings):
     deepgram_api_key: Optional[str] = None
     stt_provider: str = "whisper"  # whisper or deepgram
     
-    elevenlabs_api_key: str
-    elevenlabs_voice_id: str
+    elevenlabs_api_key: Optional[str] = None
+    elevenlabs_voice_id: Optional[str] = None
     
     # Interview Configuration
     max_interview_duration_seconds: int = 1800  # 30 minutes

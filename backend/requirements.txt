@@ -32,7 +32,7 @@ pypandoc==1.12
 aiofiles==23.2.1
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-httpx==0.25.2  # For downloading files for email attachments
+httpx>=0.26,<0.29  # For downloading files for email attachments (compatible with openai, deepgram, supabase)
 
 # Logging and Monitoring
 structlog==23.2.0

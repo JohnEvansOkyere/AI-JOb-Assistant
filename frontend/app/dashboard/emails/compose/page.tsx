@@ -197,7 +197,12 @@ export default function ComposeEmailPage() {
         apiClient.setToken(token)
       }
 
-      const response = await apiClient.post<any>('/emails/preview-interview-invitation', {
+      const response = await apiClient.post<{
+        html?: string
+        subject?: string
+        recipient_email?: string
+        recipient_name?: string
+      }>('/emails/preview-interview-invitation', {
         candidate_id: interviewForm.candidate_id,
         job_description_id: interviewForm.job_description_id,
         expires_in_hours: 48,
@@ -207,14 +212,14 @@ export default function ComposeEmailPage() {
       })
 
       if (response.success && response.data) {
-        const data = response.data as { html?: string; subject?: string; recipient_email?: string; recipient_name?: string }
-        if (data.html) {
+        const data = response.data
+        if (data?.html) {
           setInterviewPreviewHtml(data.html)
         }
         setInterviewPreviewData({
-          subject: data.subject || '',
-          recipient_email: data.recipient_email || '',
-          recipient_name: data.recipient_name || '',
+          subject: data?.subject || '',
+          recipient_email: data?.recipient_email || '',
+          recipient_name: data?.recipient_name || '',
         })
         setShowPreview(true)
       } else {
@@ -241,7 +246,12 @@ export default function ComposeEmailPage() {
         apiClient.setToken(token)
       }
 
-      const response = await apiClient.post<any>('/emails/preview-offer-letter', {
+      const response = await apiClient.post<{
+        html?: string
+        subject?: string
+        recipient_email?: string
+        recipient_name?: string
+      }>('/emails/preview-offer-letter', {
         candidate_id: offerForm.candidate_id,
         job_description_id: offerForm.job_description_id,
         salary: offerForm.salary || null,
@@ -254,14 +264,14 @@ export default function ComposeEmailPage() {
       })
 
       if (response.success && response.data) {
-        const data = response.data as { html?: string; subject?: string; recipient_email?: string; recipient_name?: string }
-        if (data.html) {
+        const data = response.data
+        if (data?.html) {
           setPreviewHtml(data.html)
         }
         setPreviewData({
-          subject: data.subject || '',
-          recipient_email: data.recipient_email || '',
-          recipient_name: data.recipient_name || '',
+          subject: data?.subject || '',
+          recipient_email: data?.recipient_email || '',
+          recipient_name: data?.recipient_name || '',
         })
         setShowPreview(true)
       } else {

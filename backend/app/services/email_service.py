@@ -277,20 +277,46 @@ class EmailService:
         sender_name = from_name or settings.email_from_name
         
         # Check if at least one provider is configured
+        smtp_configured = (
+            settings.smtp_enabled and 
+            settings.smtp_host and 
+            settings.smtp_username and 
+            settings.smtp_password
+        )
+        
         if provider == "resend" and not resend_client:
             # Fallback to SMTP if Resend not available
-            if settings.smtp_enabled:
+            if smtp_configured:
                 provider = "smtp"
                 logger.warning("Resend not configured, falling back to SMTP")
             else:
-                raise Exception("Email service not configured. Please set RESEND_API_KEY or configure SMTP.")
-        elif provider == "smtp" and not settings.smtp_enabled:
-            # Fallback to Resend if SMTP not available
-            if resend_client:
-                provider = "resend"
-                logger.warning("SMTP not configured, falling back to Resend")
-            else:
-                raise Exception("Email service not configured. Please set RESEND_API_KEY or configure SMTP.")
+                raise Exception(
+                    "Email service not configured. Please set RESEND_API_KEY or configure SMTP. "
+                    "See docs/GMAIL_SMTP_SETUP.md for SMTP setup instructions."
+                )
+        elif provider == "smtp":
+            # If SMTP is explicitly requested, don't silently fallback - give clear error
+            if not smtp_configured:
+                missing_fields = []
+                if not settings.smtp_enabled:
+                    missing_fields.append("SMTP_ENABLED=true")
+                if not settings.smtp_host:
+                    missing_fields.append("SMTP_HOST (e.g., smtp.gmail.com)")
+                if not settings.smtp_username:
+                    missing_fields.append("SMTP_USERNAME (your Gmail address)")
+                if not settings.smtp_password:
+                    missing_fields.append("SMTP_PASSWORD (Gmail App Password)")
+                
+                missing_list = "\n  ".join(missing_fields)
+                raise Exception(
+                    f"Gmail SMTP is not configured. Please add the following to your .env file:\n"
+                    f"  {missing_list}\n\n"
+                    f"For Gmail setup:\n"
+                    f"  1. Enable 2-Step Verification: https://myaccount.google.com/security\n"
+                    f"  2. Create App Password: https://myaccount.google.com/apppasswords\n"
+                    f"  3. Add SMTP settings to backend/.env\n\n"
+                    f"See docs/GMAIL_SMTP_SETUP.md for complete instructions."
+                )
         
         try:
             # Get branding if not provided

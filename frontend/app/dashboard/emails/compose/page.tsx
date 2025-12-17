@@ -42,6 +42,13 @@ export default function ComposeEmailPage() {
     recipient_name: string
   } | null>(null)
   
+  // Sender information (shared between both forms)
+  const [senderInfo, setSenderInfo] = useState({
+    from_email: '', // e.g., john.doe@gmail.com or hr@company.com
+    from_name: '',  // e.g., "John Doe - HR Manager"
+    email_provider: 'resend', // 'resend' or 'smtp'
+  })
+  
   // Interview invitation form
   const [interviewForm, setInterviewForm] = useState({
     candidate_id: '',
@@ -140,7 +147,12 @@ export default function ComposeEmailPage() {
 
       if (interviewForm.ticket_id) {
         // Send email for existing ticket
-        const response = await apiClient.post(`/emails/send-ticket/${interviewForm.ticket_id}`)
+        const formData = new FormData()
+        if (senderInfo.from_email) formData.append('from_email', senderInfo.from_email)
+        if (senderInfo.from_name) formData.append('from_name', senderInfo.from_name)
+        if (senderInfo.email_provider) formData.append('email_provider', senderInfo.email_provider)
+        
+        const response = await apiClient.upload(`/emails/send-ticket/${interviewForm.ticket_id}`, formData)
         if (response.success) {
           alert('Interview invitation email sent successfully!')
           router.push('/dashboard/emails/history')
@@ -148,11 +160,14 @@ export default function ComposeEmailPage() {
           alert('Failed to send email: ' + response.message)
         }
       } else {
-        // Create ticket and send email automatically
-        const response = await apiClient.post('/tickets?send_email=true', {
+        // Create ticket and send email automatically using send-interview-invitation endpoint
+        const response = await apiClient.post('/emails/send-interview-invitation', {
           candidate_id: interviewForm.candidate_id,
           job_description_id: interviewForm.job_description_id,
           expires_in_hours: 48,
+          from_email: senderInfo.from_email || undefined,
+          from_name: senderInfo.from_name || undefined,
+          email_provider: senderInfo.email_provider || undefined,
         })
         if (response.success) {
           alert('Ticket created and interview invitation email sent successfully!')
@@ -186,6 +201,9 @@ export default function ComposeEmailPage() {
         candidate_id: interviewForm.candidate_id,
         job_description_id: interviewForm.job_description_id,
         expires_in_hours: 48,
+        from_email: senderInfo.from_email || undefined,
+        from_name: senderInfo.from_name || undefined,
+        email_provider: senderInfo.email_provider || undefined,
       })
 
       if (response.success && response.data) {
@@ -227,6 +245,9 @@ export default function ComposeEmailPage() {
         start_date: offerForm.start_date || null,
         location: offerForm.location || null,
         employment_type: offerForm.employment_type || null,
+        from_email: senderInfo.from_email || undefined,
+        from_name: senderInfo.from_name || undefined,
+        email_provider: senderInfo.email_provider || undefined,
       })
 
       if (response.success && response.data) {
@@ -269,6 +290,9 @@ export default function ComposeEmailPage() {
       if (offerForm.start_date) formData.append('start_date', offerForm.start_date)
       if (offerForm.location) formData.append('location', offerForm.location)
       if (offerForm.employment_type) formData.append('employment_type', offerForm.employment_type)
+      if (senderInfo.from_email) formData.append('from_email', senderInfo.from_email)
+      if (senderInfo.from_name) formData.append('from_name', senderInfo.from_name)
+      if (senderInfo.email_provider) formData.append('email_provider', senderInfo.email_provider)
 
       const response = await apiClient.upload('/emails/send-offer-letter', formData)
 
@@ -407,6 +431,61 @@ export default function ComposeEmailPage() {
             </div>
 
             <div className="space-y-6">
+              <Card>
+                <div className="p-6 space-y-4">
+                  <h3 className="font-semibold text-gray-900">Sender Information</h3>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      From Email
+                    </label>
+                    <input
+                      type="email"
+                      value={senderInfo.from_email}
+                      onChange={(e) => setSenderInfo({ ...senderInfo, from_email: e.target.value })}
+                      placeholder="your.email@gmail.com"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Leave empty to use default from settings
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      From Name
+                    </label>
+                    <input
+                      type="text"
+                      value={senderInfo.from_name}
+                      onChange={(e) => setSenderInfo({ ...senderInfo, from_name: e.target.value })}
+                      placeholder="John Doe - HR Manager"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Leave empty to use default from settings
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Email Provider
+                    </label>
+                    <select
+                      value={senderInfo.email_provider}
+                      onChange={(e) => setSenderInfo({ ...senderInfo, email_provider: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    >
+                      <option value="resend">Resend API (Recommended)</option>
+                      <option value="smtp">Gmail SMTP / Other SMTP</option>
+                    </select>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Choose how to send the email
+                    </p>
+                  </div>
+                </div>
+              </Card>
+
               <Card>
                 <div className="p-6 space-y-4">
                   <h3 className="font-semibold text-gray-900">Select Candidate & Job</h3>
@@ -550,6 +629,61 @@ export default function ComposeEmailPage() {
             </div>
 
             <div className="space-y-6">
+              <Card>
+                <div className="p-6 space-y-4">
+                  <h3 className="font-semibold text-gray-900">Sender Information</h3>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      From Email
+                    </label>
+                    <input
+                      type="email"
+                      value={senderInfo.from_email}
+                      onChange={(e) => setSenderInfo({ ...senderInfo, from_email: e.target.value })}
+                      placeholder="your.email@gmail.com"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Leave empty to use default from settings
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      From Name
+                    </label>
+                    <input
+                      type="text"
+                      value={senderInfo.from_name}
+                      onChange={(e) => setSenderInfo({ ...senderInfo, from_name: e.target.value })}
+                      placeholder="John Doe - HR Manager"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Leave empty to use default from settings
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Email Provider
+                    </label>
+                    <select
+                      value={senderInfo.email_provider}
+                      onChange={(e) => setSenderInfo({ ...senderInfo, email_provider: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    >
+                      <option value="resend">Resend API (Recommended)</option>
+                      <option value="smtp">Gmail SMTP / Other SMTP</option>
+                    </select>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Choose how to send the email
+                    </p>
+                  </div>
+                </div>
+              </Card>
+
               <Card>
                 <div className="p-6 space-y-4">
                   <h3 className="font-semibold text-gray-900">Select Candidate & Job</h3>

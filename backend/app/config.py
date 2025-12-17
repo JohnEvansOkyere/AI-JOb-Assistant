@@ -56,11 +56,20 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
     
-    # Email Service (Resend)
+    # Email Service (Resend + SMTP)
     resend_api_key: Optional[str] = None
     email_from_address: str = "noreply@example.com"
     email_from_name: str = "AI Interview Platform"
     email_reply_to: Optional[str] = None
+    
+    # SMTP Configuration (for Gmail and other SMTP servers)
+    smtp_enabled: bool = False
+    smtp_host: Optional[str] = None  # e.g., smtp.gmail.com
+    smtp_port: int = 587
+    smtp_username: Optional[str] = None  # Gmail address
+    smtp_password: Optional[str] = None  # Gmail App Password (not regular password)
+    smtp_use_tls: bool = True
+    email_provider: str = "resend"  # "resend" or "smtp"
     
     # Calendar Integration
     google_calendar_client_id: Optional[str] = None

@@ -175,8 +175,23 @@ class InterviewService:
             if not response.data:
                 raise NotFoundError("Interview", str(interview_id))
             
+            # Double-check that status was updated correctly
+            updated_interview = response.data[0]
+            if updated_interview.get("completed_at") and updated_interview.get("status") != "completed":
+                # Force update status if completed_at is set but status is wrong
+                logger.warning(
+                    "Interview has completed_at but wrong status, fixing",
+                    interview_id=str(interview_id),
+                    status=updated_interview.get("status")
+                )
+                fix_response = db.service_client.table("interviews").update({
+                    "status": "completed"
+                }).eq("id", str(interview_id)).execute()
+                if fix_response.data:
+                    updated_interview = fix_response.data[0]
+            
             logger.info("Interview completed", interview_id=str(interview_id), duration=duration_seconds)
-            return response.data[0]
+            return updated_interview
             
         except (NotFoundError, ForbiddenError):
             raise
@@ -281,9 +296,28 @@ class InterviewService:
             )
             candidates = {c["id"]: c for c in (candidates_resp.data or [])}
 
-            # Combine
+            # Combine and fix status inconsistencies
             combined = []
             for interview in interviews:
+                # Fix status if completed_at is set but status is wrong
+                if interview.get("completed_at") and interview.get("status") != "completed":
+                    logger.warning(
+                        "Interview has completed_at but wrong status, fixing",
+                        interview_id=interview.get("id"),
+                        status=interview.get("status")
+                    )
+                    # Update in database
+                    try:
+                        fix_response = db.service_client.table("interviews").update({
+                            "status": "completed"
+                        }).eq("id", interview["id"]).execute()
+                        if fix_response.data:
+                            interview["status"] = "completed"
+                    except Exception as e:
+                        logger.error("Failed to fix interview status", interview_id=interview.get("id"), error=str(e))
+                        # Continue with corrected status in response even if DB update fails
+                        interview["status"] = "completed"
+                
                 job = job_map.get(interview["job_description_id"])
                 candidate = candidates.get(interview["candidate_id"])
                 report = reports.get(interview["id"])

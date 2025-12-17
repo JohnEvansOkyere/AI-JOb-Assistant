@@ -1,6 +1,7 @@
 """
 Email Service
 Handles email sending with templates, branding, and letterhead support
+Supports both Resend API and SMTP (Gmail, etc.)
 """
 
 from typing import Optional, Dict, Any, List
@@ -10,6 +11,11 @@ import resend
 from jinja2 import Template
 import httpx
 import base64
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 from app.config import settings
 from app.database import db
 import structlog
@@ -23,7 +29,13 @@ if settings.resend_api_key:
     resend_client = resend
     logger.info("Resend email client initialized")
 else:
-    logger.warning("Resend API key not configured - email sending disabled")
+    logger.warning("Resend API key not configured - Resend email sending disabled")
+
+# Check SMTP configuration
+if settings.smtp_enabled and settings.smtp_host and settings.smtp_username:
+    logger.info(f"SMTP email client configured for {settings.smtp_host}")
+else:
+    logger.warning("SMTP not configured - SMTP email sending disabled")
 
 
 class EmailService:
@@ -160,6 +172,73 @@ class EmailService:
         """
     
     @staticmethod
+    def _send_via_smtp(
+        from_email: str,
+        from_name: str,
+        recipient_email: str,
+        recipient_name: Optional[str],
+        subject: str,
+        body_html: str,
+        body_text: str,
+        attachments: Optional[List[Dict[str, Any]]] = None,
+        reply_to: Optional[str] = None,
+    ) -> str:
+        """
+        Send email via SMTP (Gmail, etc.)
+        
+        Returns:
+            Message ID or identifier
+        """
+        if not settings.smtp_enabled or not settings.smtp_host:
+            raise Exception("SMTP not configured. Please set SMTP_ENABLED=true and SMTP_HOST.")
+        
+        # Create message
+        msg = MIMEMultipart('alternative')
+        msg['From'] = f"{from_name} <{from_email}>"
+        msg['To'] = f"{recipient_name} <{recipient_email}>" if recipient_name else recipient_email
+        msg['Subject'] = subject
+        if reply_to:
+            msg['Reply-To'] = reply_to
+        
+        # Add body parts
+        part_text = MIMEText(body_text, 'plain')
+        part_html = MIMEText(body_html, 'html')
+        msg.attach(part_text)
+        msg.attach(part_html)
+        
+        # Add attachments
+        if attachments:
+            for attachment in attachments:
+                if 'content' in attachment:
+                    # Base64 content
+                    part = MIMEBase('application', 'octet-stream')
+                    part.set_payload(base64.b64decode(attachment['content']))
+                    encoders.encode_base64(part)
+                    part.add_header(
+                        'Content-Disposition',
+                        f'attachment; filename= {attachment.get("filename", "attachment")}'
+                    )
+                    msg.attach(part)
+        
+        # Send via SMTP
+        try:
+            server = smtplib.SMTP(settings.smtp_host, settings.smtp_port)
+            if settings.smtp_use_tls:
+                server.starttls()
+            server.login(settings.smtp_username, settings.smtp_password)
+            server.send_message(msg)
+            server.quit()
+            
+            # Generate a simple message ID for tracking
+            import time
+            message_id = f"smtp_{int(time.time())}"
+            logger.info("Email sent via SMTP", message_id=message_id, recipient=recipient_email)
+            return message_id
+        except Exception as e:
+            logger.error("SMTP send error", error=str(e), recipient=recipient_email)
+            raise Exception(f"Failed to send email via SMTP: {str(e)}")
+    
+    @staticmethod
     async def send_email(
         recruiter_id: UUID,
         recipient_email: str,
@@ -174,15 +253,44 @@ class EmailService:
         application_id: Optional[UUID] = None,
         recipient_name: Optional[str] = None,
         attachments: Optional[List[Dict[str, Any]]] = None,
+        from_email: Optional[str] = None,  # Frontend configurable
+        from_name: Optional[str] = None,   # Frontend configurable
+        email_provider: Optional[str] = None,  # "resend" or "smtp" - if None, uses default
     ) -> Dict[str, Any]:
         """
         Send an email with branding and template support
+        Supports both Resend API and SMTP (Gmail, etc.)
+        
+        Args:
+            from_email: Sender email address (if None, uses default from settings)
+            from_name: Sender name (if None, uses default from settings)
+            email_provider: "resend" or "smtp" (if None, uses settings.email_provider)
         
         Returns:
             Dictionary with email sending result
         """
-        if not resend_client:
-            raise Exception("Email service not configured. Please set RESEND_API_KEY.")
+        # Determine which provider to use
+        provider = email_provider or settings.email_provider
+        
+        # Determine from address and name
+        sender_email = from_email or settings.email_from_address
+        sender_name = from_name or settings.email_from_name
+        
+        # Check if at least one provider is configured
+        if provider == "resend" and not resend_client:
+            # Fallback to SMTP if Resend not available
+            if settings.smtp_enabled:
+                provider = "smtp"
+                logger.warning("Resend not configured, falling back to SMTP")
+            else:
+                raise Exception("Email service not configured. Please set RESEND_API_KEY or configure SMTP.")
+        elif provider == "smtp" and not settings.smtp_enabled:
+            # Fallback to Resend if SMTP not available
+            if resend_client:
+                provider = "resend"
+                logger.warning("SMTP not configured, falling back to Resend")
+            else:
+                raise Exception("Email service not configured. Please set RESEND_API_KEY or configure SMTP.")
         
         try:
             # Get branding if not provided
@@ -203,28 +311,65 @@ class EmailService:
                 body_text = re.sub(r'<[^>]+>', '', body_html)
                 body_text = body_text.replace('&nbsp;', ' ')
             
-            # Send via Resend
-            params = {
-                "from": f"{settings.email_from_name} <{settings.email_from_address}>",
-                "to": [recipient_email],
-                "subject": subject,
-                "html": final_html,
-                "text": body_text,
-            }
+            # Send via chosen provider
+            external_email_id = None
+            if provider == "resend":
+                # Send via Resend API
+                params = {
+                    "from": f"{sender_name} <{sender_email}>",
+                    "to": [recipient_email],
+                    "subject": subject,
+                    "html": final_html,
+                    "text": body_text,
+                }
+                
+                reply_to = settings.email_reply_to or sender_email
+                params["reply_to"] = reply_to
+                
+                if recipient_name:
+                    params["to"] = [f"{recipient_name} <{recipient_email}>"]
+                
+                # Handle attachments for Resend
+                if attachments:
+                    # Convert attachments format for Resend
+                    resend_attachments = []
+                    for att in attachments:
+                        if 'content' in att:
+                            # Already base64 encoded
+                            resend_attachments.append({
+                                "filename": att.get("filename", "attachment"),
+                                "content": att['content']
+                            })
+                        elif 'path' in att:
+                            # URL path - Resend supports URLs
+                            resend_attachments.append({
+                                "filename": att.get("filename", "attachment"),
+                                "path": att['path']
+                            })
+                    params["attachments"] = resend_attachments
+                
+                try:
+                    result = resend.Emails.send(params)
+                    external_email_id = result.get("id") if result else None
+                except Exception as send_error:
+                    error_msg = str(send_error)
+                    logger.error("Resend send error", error=error_msg, recipient=recipient_email)
+                    raise Exception(f"Failed to send email via Resend: {error_msg}")
             
-            if settings.email_reply_to:
-                params["reply_to"] = settings.email_reply_to
-            
-            if recipient_name:
-                params["to"] = [f"{recipient_name} <{recipient_email}>"]
-            
-            # Add attachments if provided
-            if attachments:
-                params["attachments"] = attachments
-            
-            result = resend.Emails.send(params)
-            
-            external_email_id = result.get("id") if result else None
+            elif provider == "smtp":
+                # Send via SMTP
+                reply_to = settings.email_reply_to or sender_email
+                external_email_id = EmailService._send_via_smtp(
+                    from_email=sender_email,
+                    from_name=sender_name,
+                    recipient_email=recipient_email,
+                    recipient_name=recipient_name,
+                    subject=subject,
+                    body_html=final_html,
+                    body_text=body_text,
+                    attachments=attachments,
+                    reply_to=reply_to,
+                )
             
             # Save to sent_emails table
             sent_email_data = {
@@ -299,6 +444,9 @@ class EmailService:
         ticket_id: UUID,
         job_description_id: UUID,
         expires_in_hours: Optional[int] = None,
+        from_email: Optional[str] = None,  # Frontend configurable
+        from_name: Optional[str] = None,   # Frontend configurable
+        email_provider: Optional[str] = None,  # "resend" or "smtp"
     ) -> Dict[str, Any]:
         """Send interview ticket email to candidate"""
         
@@ -361,6 +509,9 @@ class EmailService:
             candidate_id=candidate_id,
             job_description_id=job_description_id,
             interview_ticket_id=ticket_id,
+            from_email=from_email,
+            from_name=from_name,
+            email_provider=email_provider,
         )
     
     @staticmethod
@@ -374,6 +525,9 @@ class EmailService:
         offer_letter_url: str,
         offer_letter_content: Optional[bytes] = None,
         offer_details: Optional[Dict[str, Any]] = None,
+        from_email: Optional[str] = None,  # Frontend configurable
+        from_name: Optional[str] = None,   # Frontend configurable
+        email_provider: Optional[str] = None,  # "resend" or "smtp"
     ) -> Dict[str, Any]:
         """
         Send offer letter email to candidate with attached offer letter PDF
@@ -442,87 +596,49 @@ class EmailService:
         body_html = EmailService.render_template(template_html, variables)
         subject = f"Job Offer: {job_title}"
         
-        # Send email with attachment
-        if not resend_client:
-            raise Exception("Email service not configured. Please set RESEND_API_KEY.")
-        
-        try:
-            # Get branding for letterhead
-            final_html = EmailService.wrap_with_letterhead(body_html, branding)
-            
-            # Generate plain text version
-            import re
-            body_text = re.sub(r'<[^>]+>', '', body_html)
-            body_text = body_text.replace('&nbsp;', ' ')
-            
-            # Get offer letter PDF content for attachment
-            if offer_letter_content:
-                pdf_content = offer_letter_content
-            else:
-                # Download from URL if content not provided
+        # Prepare attachment
+        attachments = []
+        if offer_letter_content:
+            # Convert to base64 for attachment
+            pdf_base64 = base64.b64encode(offer_letter_content).decode('utf-8')
+            attachments.append({
+                "filename": f"Offer_Letter_{job_title.replace(' ', '_')}.pdf",
+                "content": pdf_base64,
+            })
+        elif offer_letter_url:
+            # If provider is Resend, we can use URL directly
+            # For SMTP, we need to download and attach
+            if email_provider == "smtp" or (email_provider is None and settings.email_provider == "smtp"):
+                # Download for SMTP
                 async with httpx.AsyncClient() as client:
                     pdf_response = await client.get(offer_letter_url)
                     pdf_content = pdf_response.content
-            
-            # Convert to base64 for Resend
-            pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
-            
-            # Send via Resend with attachment
-            params = {
-                "from": f"{settings.email_from_name} <{settings.email_from_address}>",
-                "to": [f"{candidate_name} <{candidate_email}>"],
-                "subject": subject,
-                "html": final_html,
-                "text": body_text,
-                "attachments": [
-                    {
+                    pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
+                    attachments.append({
                         "filename": f"Offer_Letter_{job_title.replace(' ', '_')}.pdf",
                         "content": pdf_base64,
-                    }
-                ]
-            }
-            
-            if settings.email_reply_to:
-                params["reply_to"] = settings.email_reply_to
-            
-            result = resend.Emails.send(params)
-            external_email_id = result.get("id") if result else None
-            
-            # Save to sent_emails table
-            from datetime import datetime
-            sent_email_data = {
-                "recruiter_id": str(recruiter_id),
-                "recipient_email": candidate_email,
-                "recipient_name": candidate_name,
-                "candidate_id": str(candidate_id),
-                "subject": subject,
-                "body_html": final_html,
-                "body_text": body_text,
-                "status": "sent" if external_email_id else "failed",
-                "external_email_id": external_email_id,
-                "job_description_id": str(job_description_id),
-                "sent_at": datetime.utcnow().isoformat() if external_email_id else None,
-            }
-            
-            response = db.service_client.table("sent_emails").insert(sent_email_data).execute()
-            
-            logger.info(
-                "Offer letter email sent",
-                email_id=response.data[0]["id"] if response.data else None,
-                recipient=candidate_email,
-                external_id=external_email_id
-            )
-            
-            return {
-                "success": True,
-                "email_id": response.data[0]["id"] if response.data else None,
-                "external_email_id": external_email_id,
-                "status": "sent" if external_email_id else "failed"
-            }
-            
-        except Exception as e:
-            logger.error("Error sending offer letter email", error=str(e), recipient=candidate_email)
-            raise
+                    })
+            else:
+                # Use URL for Resend
+                attachments.append({
+                    "filename": f"Offer_Letter_{job_title.replace(' ', '_')}.pdf",
+                    "path": offer_letter_url,
+                })
+        
+        # Use the unified send_email method
+        return await EmailService.send_email(
+            recruiter_id=recruiter_id,
+            recipient_email=candidate_email,
+            recipient_name=candidate_name,
+            subject=subject,
+            body_html=body_html,
+            candidate_id=candidate_id,
+            job_description_id=job_description_id,
+            attachments=attachments if attachments else None,
+            from_email=from_email,
+            from_name=from_name,
+            email_provider=email_provider,
+        )
     
     @staticmethod
     def extract_first_name(full_name: Optional[str], email: Optional[str] = None) -> str:
@@ -586,93 +702,4 @@ class EmailService:
                 result = result.replace(f"{{{{ {key} }}}}", str(value))  # Handle spaces
         
         return result
-    
-    @staticmethod
-    async def send_offer_letter_email(
-        recruiter_id: UUID,
-        candidate_id: UUID,
-        candidate_email: str,
-        candidate_name: str,
-        job_title: str,
-        job_description_id: UUID,
-        offer_letter_pdf_url: str,
-        offer_details: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """
-        Send offer letter email with PDF attachment
-        
-        Args:
-            recruiter_id: Recruiter ID
-            candidate_id: Candidate ID
-            candidate_email: Candidate email
-            candidate_name: Candidate name
-            job_title: Job title
-            job_description_id: Job description ID
-            offer_letter_pdf_url: URL to the PDF offer letter (Supabase Storage or external)
-            offer_details: Optional offer details (salary, start date, etc.)
-        
-        Returns:
-            Email sending result
-        """
-        # Default offer letter email template
-        template_html = """
-        <div style="max-width: 600px; margin: 0 auto;">
-            <h2 style="color: {{primary_color}};">Job Offer - {{job_title}}</h2>
-            <p>Dear {{candidate_name}},</p>
-            <p>We are delighted to offer you the position of <strong>{{job_title}}</strong> at our company.</p>
-            
-            {% if offer_details %}
-            <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                <h3 style="margin-top: 0;">Offer Details:</h3>
-                {% if offer_details.salary %}
-                <p><strong>Salary:</strong> {{offer_details.salary}}</p>
-                {% endif %}
-                {% if offer_details.start_date %}
-                <p><strong>Start Date:</strong> {{offer_details.start_date}}</p>
-                {% endif %}
-                {% if offer_details.location %}
-                <p><strong>Location:</strong> {{offer_details.location}}</p>
-                {% endif %}
-            </div>
-            {% endif %}
-            
-            <p>Please find attached the formal offer letter with all the details. We look forward to welcoming you to our team!</p>
-            
-            <p>If you have any questions or need clarification on any aspect of this offer, please don't hesitate to reach out.</p>
-            
-            <p>We hope you will accept this offer and look forward to working with you.</p>
-            <p>Best regards,<br>The Hiring Team</p>
-        </div>
-        """
-        
-        # Get branding
-        branding = await EmailService.get_company_branding(recruiter_id)
-        primary_color = branding.get("primary_color", "#2563eb") if branding else "#2563eb"
-        
-        variables = {
-            "candidate_name": candidate_name,
-            "job_title": job_title,
-            "primary_color": primary_color,
-            "offer_details": offer_details or {},
-        }
-        
-        body_html = EmailService.render_template(template_html, variables)
-        subject = f"Job Offer: {job_title}"
-        
-        # Prepare attachment
-        attachments = [{
-            "filename": f"Offer_Letter_{job_title.replace(' ', '_')}.pdf",
-            "path": offer_letter_pdf_url,  # Resend supports URLs
-        }]
-        
-        return await EmailService.send_email(
-            recruiter_id=recruiter_id,
-            recipient_email=candidate_email,
-            recipient_name=candidate_name,
-            subject=subject,
-            body_html=body_html,
-            candidate_id=candidate_id,
-            job_description_id=job_description_id,
-            attachments=attachments,
-        )
 

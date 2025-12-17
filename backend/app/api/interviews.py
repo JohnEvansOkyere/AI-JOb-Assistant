@@ -48,6 +48,76 @@ async def start_interview_from_ticket(
         )
 
 
+@router.put("/{interview_id}/job-status", response_model=Response[dict])
+async def update_interview_job_status(
+    interview_id: UUID,
+    job_status: str = Body(..., embed=True),
+    recruiter_id: UUID = Depends(get_current_user_id)
+):
+    """
+    Update interview job status (accepted/rejected/under_review/pending)
+    
+    Args:
+        interview_id: Interview ID
+        job_status: New job status (accepted, rejected, under_review, pending)
+        recruiter_id: Current recruiter ID
+    
+    Returns:
+        Updated interview data
+    """
+    try:
+        from app.database import db
+        
+        # Validate job_status
+        valid_statuses = ['accepted', 'rejected', 'under_review', 'pending']
+        if job_status not in valid_statuses:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid job_status. Must be one of: {', '.join(valid_statuses)}"
+            )
+        
+        # Get interview and verify recruiter owns the job
+        interview_response = db.service_client.table("interviews").select(
+            "id, job_description_id"
+        ).eq("id", str(interview_id)).execute()
+        
+        if not interview_response.data:
+            raise HTTPException(status_code=404, detail="Interview not found")
+        
+        interview = interview_response.data[0]
+        job_id = interview.get("job_description_id")
+        
+        # Verify recruiter owns the job
+        job_response = db.service_client.table("job_descriptions").select(
+            "id, recruiter_id"
+        ).eq("id", str(job_id)).eq("recruiter_id", str(recruiter_id)).execute()
+        
+        if not job_response.data:
+            raise HTTPException(status_code=403, detail="Not authorized to update this interview")
+        
+        # Update job_status
+        update_response = db.service_client.table("interviews").update({
+            "job_status": job_status
+        }).eq("id", str(interview_id)).execute()
+        
+        if not update_response.data:
+            raise HTTPException(status_code=500, detail="Failed to update interview status")
+        
+        return Response(
+            success=True,
+            message=f"Interview status updated to {job_status}",
+            data=update_response.data[0]
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error updating interview job status", error=str(e), interview_id=str(interview_id))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update interview status: {str(e)}"
+        )
+
+
 @router.get("/{interview_id}", response_model=Response[Interview])
 async def get_interview(
     interview_id: UUID,

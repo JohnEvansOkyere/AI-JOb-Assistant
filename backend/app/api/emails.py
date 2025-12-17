@@ -34,6 +34,9 @@ async def send_email(
     application_id: Optional[UUID] = Form(None),
     branding_id: Optional[UUID] = Form(None),
     template_id: Optional[UUID] = Form(None),
+    from_email: Optional[str] = Form(None),  # Frontend configurable
+    from_name: Optional[str] = Form(None),   # Frontend configurable
+    email_provider: Optional[str] = Form(None),  # "resend" or "smtp"
     recruiter_id: UUID = Depends(get_current_user_id)
 ):
     """
@@ -50,6 +53,9 @@ async def send_email(
         application_id: Optional application ID
         branding_id: Optional branding ID (uses default if not provided)
         template_id: Optional template ID used
+        from_email: Sender email address (if None, uses default from settings)
+        from_name: Sender name (if None, uses default from settings)
+        email_provider: "resend" or "smtp" (if None, uses default from settings)
         recruiter_id: Current recruiter ID
     
     Returns:
@@ -68,6 +74,9 @@ async def send_email(
             interview_ticket_id=interview_ticket_id,
             application_id=application_id,
             recipient_name=recipient_name,
+            from_email=from_email,
+            from_name=from_name,
+            email_provider=email_provider,
         )
         
         return Response(
@@ -87,6 +96,9 @@ async def send_email(
 async def send_ticket_email(
     request: Request,
     ticket_id: UUID,
+    from_email: Optional[str] = Form(None),  # Frontend configurable
+    from_name: Optional[str] = Form(None),   # Frontend configurable
+    email_provider: Optional[str] = Form(None),  # "resend" or "smtp"
     recruiter_id: UUID = Depends(get_current_user_id)
 ):
     """
@@ -131,6 +143,9 @@ async def send_ticket_email(
             ticket_id=ticket_id,
             job_description_id=UUID(job["id"]),
             expires_in_hours=ticket.get("expires_in_hours"),
+            from_email=from_email,
+            from_name=from_name,
+            email_provider=email_provider,
         )
         
         return Response(
@@ -400,6 +415,9 @@ async def send_offer_letter(
     start_date: Optional[str] = Form(None),
     location: Optional[str] = Form(None),
     employment_type: Optional[str] = Form(None),
+    from_email: Optional[str] = Form(None),  # Frontend configurable
+    from_name: Optional[str] = Form(None),   # Frontend configurable
+    email_provider: Optional[str] = Form(None),  # "resend" or "smtp"
     recruiter_id: UUID = Depends(get_current_user_id)
 ):
     """
@@ -433,7 +451,15 @@ async def send_offer_letter(
         
         # Upload offer letter to Supabase Storage
         bucket_name = "offer-letters"  # Create this bucket in Supabase
-        file_path = f"{job_description_id}/{candidate_id}/{offer_letter_file.filename}"
+        import time
+        import uuid
+        
+        # Make filename unique to avoid conflicts
+        timestamp = int(time.time())
+        unique_id = str(uuid.uuid4())[:8]
+        file_extension = offer_letter_file.filename.split('.')[-1] if '.' in offer_letter_file.filename else 'pdf'
+        unique_filename = f"offer_letter_{timestamp}_{unique_id}.{file_extension}"
+        file_path = f"{job_description_id}/{candidate_id}/{unique_filename}"
         
         content = await offer_letter_file.read()
         
@@ -444,9 +470,23 @@ async def send_offer_letter(
                 file_options={"content-type": "application/pdf"}
             )
         except Exception as e:
+            error_str = str(e).lower()
             # If bucket doesn't exist, use cvs bucket as fallback
-            if "bucket not found" in str(e).lower():
+            if "bucket not found" in error_str or "404" in str(e):
                 bucket_name = "cvs"
+                db.service_client.storage.from_(bucket_name).upload(
+                    file_path,
+                    content,
+                    file_options={"content-type": "application/pdf"}
+                )
+            # If duplicate error, try to remove existing file first
+            elif "409" in str(e) or "duplicate" in error_str or "already exists" in error_str:
+                try:
+                    # Try to remove existing file
+                    db.service_client.storage.from_(bucket_name).remove([file_path])
+                except:
+                    pass  # Ignore if file doesn't exist or removal fails
+                # Retry upload with unique filename (should work now)
                 db.service_client.storage.from_(bucket_name).upload(
                     file_path,
                     content,
@@ -480,6 +520,9 @@ async def send_offer_letter(
             offer_letter_url=offer_letter_url,
             offer_letter_content=content,  # Pass content directly
             offer_details=offer_details if offer_details else None,
+            from_email=from_email,
+            from_name=from_name,
+            email_provider=email_provider,
         )
         
         return Response(
@@ -490,10 +533,20 @@ async def send_offer_letter(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Error sending offer letter", error=str(e))
+        error_message = str(e)
+        logger.error("Error sending offer letter", error=error_message, recruiter_id=str(recruiter_id))
+        
+        # Provide more helpful error messages
+        if "RESEND_API_KEY" in error_message or "not configured" in error_message or "Email service not configured" in error_message:
+            error_message = "Email service not configured. Please set RESEND_API_KEY in your environment variables. See docs/EMAIL_SETUP_GUIDE.md for setup instructions."
+        elif "domain" in error_message.lower() or "from" in error_message.lower() or "verify" in error_message.lower():
+            error_message = f"Email sending failed: Please verify your 'from' email address in Resend. Current: {settings.email_from_address}. See docs/EMAIL_SETUP_GUIDE.md for setup instructions."
+        elif "api key" in error_message.lower() or "unauthorized" in error_message.lower():
+            error_message = "Email sending failed: Invalid or missing Resend API key. Please check your RESEND_API_KEY. See docs/EMAIL_SETUP_GUIDE.md for setup instructions."
+        
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to send offer letter: {str(e)}"
+            detail=error_message
         )
 
 
@@ -585,6 +638,9 @@ async def send_interview_invitation(
     candidate_id: UUID = Body(...),
     job_description_id: UUID = Body(...),
     expires_in_hours: Optional[int] = Body(48),
+    from_email: Optional[str] = Body(None),  # Frontend configurable
+    from_name: Optional[str] = Body(None),   # Frontend configurable
+    email_provider: Optional[str] = Body(None),  # "resend" or "smtp"
     recruiter_id: UUID = Depends(get_current_user_id)
 ):
     """
@@ -597,6 +653,9 @@ async def send_interview_invitation(
         candidate_id: Candidate ID
         job_description_id: Job description ID
         expires_in_hours: Ticket expiration (default: 48 hours)
+        from_email: Sender email address (if None, uses default from settings)
+        from_name: Sender name (if None, uses default from settings)
+        email_provider: "resend" or "smtp" (if None, uses default from settings)
         recruiter_id: Current recruiter ID
     
     Returns:
@@ -642,6 +701,9 @@ async def send_interview_invitation(
             ticket_id=UUID(ticket["id"]),
             job_description_id=job_description_id,
             expires_in_hours=expires_in_hours,
+            from_email=from_email,
+            from_name=from_name,
+            email_provider=email_provider,
         )
         
         return Response(

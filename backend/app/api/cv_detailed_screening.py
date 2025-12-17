@@ -3,12 +3,13 @@ CV Detailed Screening API
 Endpoints for comprehensive CV analysis (Resume Worded style)
 """
 
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Request
 from typing import Optional
 from uuid import UUID
 from app.services.cv_detailed_analyzer import CVDetailedAnalyzer
 from app.database import db
 from app.utils.auth import get_current_user
+from app.utils.rate_limit import rate_limit_ai
 import structlog
 
 logger = structlog.get_logger()
@@ -16,7 +17,9 @@ router = APIRouter(prefix="/cv-screening", tags=["CV Detailed Screening"])
 
 
 @router.post("/analyze/{application_id}")
+@rate_limit_ai()  # Limit: 10 requests per hour per user (expensive AI operation)
 async def analyze_application_cv(
+    request: Request,
     application_id: UUID,
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user)

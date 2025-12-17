@@ -3,13 +3,14 @@ Detailed Interview Analysis API Routes
 Comprehensive AI-powered interview analysis endpoints
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from typing import Optional, List
 from uuid import UUID
 
 from app.schemas.common import Response
 from app.services.detailed_interview_analyzer import DetailedInterviewAnalyzer
 from app.utils.auth import get_current_user
+from app.utils.rate_limit import rate_limit_ai
 from app.database import db
 import structlog
 
@@ -19,7 +20,9 @@ router = APIRouter(prefix="/interview-analysis", tags=["interview-analysis"])
 
 
 @router.post("/analyze/{interview_id}")
+@rate_limit_ai()  # Limit: 10 requests per hour per user (expensive AI operation)
 async def analyze_interview(
+    request: Request,
     interview_id: UUID,
     current_user: dict = Depends(get_current_user)
 ):

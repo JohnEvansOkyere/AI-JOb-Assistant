@@ -3,12 +3,13 @@ Interview Tickets API Routes
 Ticket generation and validation endpoints
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body, BackgroundTasks
 from typing import Optional
 from uuid import UUID
 from app.schemas.common import Response
 from app.models.interview_ticket import InterviewTicket
 from app.services.ticket_service import TicketService
+from app.services.email_service import EmailService
 from app.utils.auth import get_current_user_id
 from app.database import db
 import structlog
@@ -23,15 +24,19 @@ async def create_ticket(
     candidate_id: UUID = Body(..., description="Candidate ID"),
     job_description_id: UUID = Body(..., description="Job description ID"),
     expires_in_hours: Optional[int] = Query(None, description="Expiration time in hours"),
+    send_email: bool = Query(True, description="Automatically send interview invitation email"),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     recruiter_id: UUID = Depends(get_current_user_id)
 ):
     """
-    Create a new interview ticket
+    Create a new interview ticket and optionally send invitation email
     
     Args:
         candidate_id: Candidate ID (request body)
         job_description_id: Job description ID (request body)
         expires_in_hours: Optional expiration time in hours (query param)
+        send_email: Whether to automatically send interview invitation email (default: true)
+        background_tasks: Background tasks for email sending
         recruiter_id: Current user ID (for authorization)
     
     Returns:
@@ -39,7 +44,7 @@ async def create_ticket(
     """
     try:
         # Verify recruiter owns the job (use service client to bypass RLS)
-        job = db.service_client.table("job_descriptions").select("id").eq("id", str(job_description_id)).eq("recruiter_id", str(recruiter_id)).execute()
+        job = db.service_client.table("job_descriptions").select("id, title").eq("id", str(job_description_id)).eq("recruiter_id", str(recruiter_id)).execute()
         if not job.data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -53,9 +58,19 @@ async def create_ticket(
             expires_in_hours=expires_in_hours
         )
         
+        # Automatically send interview invitation email if requested
+        if send_email:
+            background_tasks.add_task(
+                send_interview_invitation_email,
+                recruiter_id=recruiter_id,
+                ticket_id=UUID(ticket["id"]),
+                candidate_id=candidate_id,
+                job_description_id=job_description_id
+            )
+        
         return Response(
             success=True,
-            message="Ticket created successfully",
+            message="Ticket created successfully" + (" and email sent" if send_email else ""),
             data=ticket
         )
     except HTTPException:
@@ -66,6 +81,84 @@ async def create_ticket(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+
+async def send_interview_invitation_email(
+    recruiter_id: UUID,
+    ticket_id: UUID,
+    candidate_id: UUID,
+    job_description_id: UUID
+):
+    """Background task to send interview invitation email"""
+    try:
+        # Fetch ticket details
+        ticket_response = db.service_client.table("interview_tickets").select(
+            "ticket_code, expires_at, candidate_id, job_description_id"
+        ).eq("id", str(ticket_id)).execute()
+        
+        if not ticket_response.data:
+            logger.error("Ticket not found for email", ticket_id=str(ticket_id))
+            return
+        
+        ticket = ticket_response.data[0]
+        ticket_code = ticket.get("ticket_code")
+        
+        # Fetch job details
+        job_response = db.service_client.table("job_descriptions").select(
+            "id, title"
+        ).eq("id", str(job_description_id)).execute()
+        
+        if not job_response.data:
+            logger.error("Job not found for email", job_id=str(job_description_id))
+            return
+        
+        job = job_response.data[0]
+        
+        # Fetch candidate details
+        candidate_response = db.service_client.table("candidates").select(
+            "id, email, full_name"
+        ).eq("id", str(candidate_id)).execute()
+        
+        if not candidate_response.data:
+            logger.error("Candidate not found for email", candidate_id=str(candidate_id))
+            return
+        
+        candidate = candidate_response.data[0]
+        
+        if not candidate.get("email"):
+            logger.error("Candidate email not found", candidate_id=str(candidate_id))
+            return
+        
+        # Calculate expires_in_hours if expires_at is set
+        expires_in_hours = None
+        if ticket.get("expires_at"):
+            from datetime import datetime, timezone
+            expires_at = datetime.fromisoformat(ticket["expires_at"].replace('Z', '+00:00'))
+            now = datetime.now(timezone.utc)
+            if expires_at > now:
+                delta = expires_at - now
+                expires_in_hours = int(delta.total_seconds() / 3600)
+        
+        # Generate interview link
+        from app.config import settings
+        base_url = settings.allowed_origins[0] if settings.allowed_origins else "http://localhost:3000"
+        interview_link = f"{base_url}/interview/job/{job.get('id')}"
+        
+        await EmailService.send_ticket_email(
+            recruiter_id=recruiter_id,
+            candidate_id=UUID(candidate["id"]),
+            ticket_code=ticket_code,
+            interview_link=interview_link,
+            job_title=job.get("title", "Interview"),
+            candidate_name=candidate.get("full_name", "Candidate"),
+            candidate_email=candidate["email"],
+            ticket_id=ticket_id,
+            job_description_id=job_description_id,
+            expires_in_hours=expires_in_hours
+        )
+        logger.info("Interview invitation email sent", ticket_id=str(ticket_id), candidate_email=candidate["email"])
+    except Exception as e:
+        logger.error("Error sending interview invitation email", error=str(e), ticket_id=str(ticket_id))
 
 
 @router.post("/validate", response_model=Response[dict])

@@ -56,6 +56,29 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
     
+    # Email Service (Resend)
+    resend_api_key: Optional[str] = None
+    email_from_address: str = "noreply@example.com"
+    email_from_name: str = "AI Interview Platform"
+    email_reply_to: Optional[str] = None
+    
+    # Calendar Integration
+    google_calendar_client_id: Optional[str] = None
+    google_calendar_client_secret: Optional[str] = None
+    google_calendar_redirect_uri: Optional[str] = None
+    
+    # Rate Limiting
+    rate_limit_enabled: bool = True
+    rate_limit_storage_uri: Optional[str] = None  # Redis URI for distributed rate limiting (optional)
+    
+    # Rate limit defaults (requests per time window)
+    # Format: "number/time_unit" where time_unit is: second, minute, hour, day
+    rate_limit_default: str = "100/minute"  # Default for most endpoints
+    rate_limit_auth: str = "3/minute"  # Login/register endpoints (4th request will be blocked)
+    rate_limit_auth_retry_hours: int = 5  # Hours to wait before retry after auth rate limit
+    rate_limit_ai: str = "10/hour"  # AI analysis endpoints (expensive!)
+    rate_limit_public: str = "20/hour"  # Public application forms
+    
     class Config:
         env_file = ".env"
         case_sensitive = False

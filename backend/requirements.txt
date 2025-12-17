@@ -32,9 +32,22 @@ pypandoc==1.12
 aiofiles==23.2.1
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+httpx==0.25.2  # For downloading files for email attachments
 
 # Logging and Monitoring
 structlog==23.2.0
+
+# Rate Limiting
+slowapi==0.1.9
+
+# Email Services
+resend==2.1.0  # Resend email API
+jinja2==3.1.2  # Template engine for email templates
+
+# Calendar Integration
+google-api-python-client==2.108.0
+google-auth-httplib2==0.1.1
+google-auth-oauthlib==1.1.0
 
 # Testing (optional)
 pytest==7.4.3

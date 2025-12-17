@@ -74,12 +74,23 @@ AI-JOb-Assistant/
    - Job-specific ranked candidate lists
    - Direct ticket issuance from ranking views
 
-10. ⏳ **Phase 9: Frontend Features**
+10. ✅ **Phase 12: Email System & Calendar Integration**
+    - Email service with Resend integration
+    - Company branding/letterhead management
+    - Email templates and history tracking
+    - Calendar event management
+    - Automatic ticket email delivery
+    - See [Email System Phase Documentation](./docs/EMAIL_SYSTEM_PHASE.md)
+
+11. ⏳ **Phase 9: Frontend Features**
     - Enhanced recruiter dashboard
     - Interview UI for candidates
     - Report viewing and analytics
+    - Email composer UI
+    - Branding manager UI
+    - Calendar view
 
-11. ⏳ **Phase 10: Security & Polish**
+12. ⏳ **Phase 10: Security & Polish**
     - Enhanced access control
     - Comprehensive error handling
     - Deployment configurations
@@ -87,15 +98,6 @@ AI-JOb-Assistant/
 
 ## Getting Started
 
-
-## Key Documentation
-
-- **Phase Documentation**: See `docs/PHASE_*.md` for detailed implementation guides
-- **CV Screening System**: See `docs/CV_SCREENING_SYSTEM.md` for comprehensive Resume Worded-style CV analysis
-- **Interview Link System**: See `docs/INTERVIEW_LINK_SYSTEM.md` for job-specific interview link sharing
-- **Text Interview Robustness**: See `docs/TEXT_INTERVIEW_ROBUSTNESS.md` for production-ready improvements
-- **Enterprise Readiness**: See `docs/ENTERPRISE_READINESS.md` for production deployment checklist
-- **Error Documentation**: See `docs/ERRORS_AND_SOLUTIONS.md` for error tracking by phase
 
 ## Features
 
@@ -113,6 +115,14 @@ AI-JOb-Assistant/
 - Match scoring (0-100) with detailed breakdowns
 - Application status tracking
 - Interview ticket generation from qualified candidates
+
+### Email & Communication
+- Custom email composer with company branding
+- Company letterhead/logo management
+- Automatic interview ticket email delivery
+- Email templates and history tracking
+- Calendar event management for interviews
+- Google Calendar integration (in progress)
 
 ### Comprehensive CV Screening (Resume Worded Style)
 - **Multi-category scoring**: 9 categories with 20+ criteria

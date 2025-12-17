@@ -24,6 +24,10 @@ from app.api import (
     voice_router,
     cv_detailed_screening_router,
     detailed_interview_analysis_router,
+    emails_router,
+    email_templates_router,
+    branding_router,
+    calendar_router,
 )
 from app.utils.errors import (
     app_exception_handler,
@@ -31,6 +35,8 @@ from app.utils.errors import (
     general_exception_handler,
     AppException
 )
+from app.utils.rate_limit import limiter, rate_limit_handler
+from slowapi.errors import RateLimitExceeded
 import structlog
 
 # Configure structured logging
@@ -71,7 +77,11 @@ app.add_middleware(
 # Register exception handlers
 app.add_exception_handler(AppException, app_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 app.add_exception_handler(Exception, general_exception_handler)
+
+# Add rate limiter middleware
+app.state.limiter = limiter
 
 
 @app.on_event("startup")
@@ -127,6 +137,10 @@ app.include_router(rankings_router)
 app.include_router(voice_router)
 app.include_router(cv_detailed_screening_router)
 app.include_router(detailed_interview_analysis_router)
+app.include_router(emails_router)
+app.include_router(email_templates_router)
+app.include_router(branding_router)
+app.include_router(calendar_router)
 
 if __name__ == "__main__":
     import uvicorn

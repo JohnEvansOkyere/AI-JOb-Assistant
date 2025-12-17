@@ -12,7 +12,7 @@ import { apiClient } from '@/lib/api/client'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
-import { Copy, Link as LinkIcon, Check } from 'lucide-react'
+import { Copy, Link as LinkIcon, Check, Mail, Send } from 'lucide-react'
 import { getInterviewLink, copyToClipboard } from '@/lib/utils/interview'
 
 interface Application {
@@ -31,11 +31,14 @@ export default function CreateTicketPage() {
   const [application, setApplication] = useState<Application | null>(null)
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [sendingEmail, setSendingEmail] = useState(false)
   const [error, setError] = useState('')
   const [ticketCode, setTicketCode] = useState('')
+  const [ticketId, setTicketId] = useState<string>('')
   const [expiresInHours, setExpiresInHours] = useState(48)
   const [copiedCode, setCopiedCode] = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
+  const [emailSent, setEmailSent] = useState(false)
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -81,13 +84,18 @@ export default function CreateTicketPage() {
         return
       }
 
-      const response = await apiClient.post<{ ticket_code: string }>(`/tickets?expires_in_hours=${expiresInHours}`, {
+      const response = await apiClient.post<{ ticket_code: string; id: string }>(`/tickets?expires_in_hours=${expiresInHours}&send_email=true`, {
         candidate_id: app.candidate_id,
         job_description_id: jobId
       })
       
       if (response.success && response.data) {
-        setTicketCode(response.data.ticket_code)
+        setTicketCode(response.data.ticket_code || response.data.code)
+        setTicketId(response.data.id)
+        // Check if email was sent automatically
+        if (response.message?.includes('email sent')) {
+          setEmailSent(true)
+        }
       } else {
         setError(response.message || 'Failed to create ticket')
       }
@@ -122,11 +130,40 @@ export default function CreateTicketPage() {
   }
 
   const handleCopyLink = async () => {
-    const link = getInterviewLink(ticketCode)
+    const link = getInterviewLink(jobId)
     const success = await copyToClipboard(link)
     if (success) {
       setCopiedLink(true)
       setTimeout(() => setCopiedLink(false), 2000)
+    }
+  }
+
+  const handleSendEmail = async () => {
+    if (!ticketId) {
+      alert('Ticket ID not found')
+      return
+    }
+
+    try {
+      setSendingEmail(true)
+      const token = localStorage.getItem('auth_token')
+      if (token) {
+        apiClient.setToken(token)
+      }
+
+      const response = await apiClient.post(`/emails/send-ticket/${ticketId}`)
+      
+      if (response.success) {
+        setEmailSent(true)
+        alert('Ticket email sent successfully!')
+      } else {
+        alert('Failed to send email: ' + response.message)
+      }
+    } catch (err: any) {
+      console.error('Error sending email:', err)
+      alert('Error sending email: ' + (err.message || 'Unknown error'))
+    } finally {
+      setSendingEmail(false)
     }
   }
 
@@ -187,6 +224,40 @@ export default function CreateTicketPage() {
                 </p>
               </div>
               
+              {/* Send Email Section */}
+              <div className="border-t pt-6">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                  <div className="flex items-start gap-3">
+                    <Mail className="w-5 h-5 text-blue-600 mt-0.5" />
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-blue-900 mb-1">Send Ticket Email</h3>
+                      <p className="text-sm text-blue-700">
+                        Automatically send the interview ticket to the candidate via email with your company branding.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  variant="primary"
+                  onClick={handleSendEmail}
+                  loading={sendingEmail}
+                  disabled={emailSent}
+                  className="w-full"
+                >
+                  {emailSent ? (
+                    <>
+                      <Check className="w-4 h-4 mr-2" />
+                      Email Sent!
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4 mr-2" />
+                      Send Ticket Email to Candidate
+                    </>
+                  )}
+                </Button>
+              </div>
+
               <div className="flex gap-4 justify-center pt-4 border-t">
                 <Button
                   variant="outline"
@@ -223,7 +294,7 @@ export default function CreateTicketPage() {
                   )}
                 </Button>
                 <Button
-                  variant="primary"
+                  variant="outline"
                   onClick={() => router.push(`/dashboard/jobs/${jobId}/applications`)}
                 >
                   Back to Applications

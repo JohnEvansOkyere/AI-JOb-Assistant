@@ -13,6 +13,7 @@ import { apiClient } from '@/lib/api/client'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { JobDescription } from '@/types'
+import { Check, Copy } from 'lucide-react'
 
 export default function JobsPage() {
   const router = useRouter()
@@ -20,6 +21,28 @@ export default function JobsPage() {
   const [jobs, setJobs] = useState<JobDescription[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [copiedJobId, setCopiedJobId] = useState<string | null>(null)
+
+  const handleCopyLink = async (jobId: string) => {
+    const url = typeof window !== 'undefined' ? `${window.location.origin}/apply/${jobId}` : ''
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopiedJobId(jobId)
+      setTimeout(() => setCopiedJobId(null), 2000)
+    } catch (err) {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea')
+      textArea.value = url
+      textArea.style.position = 'fixed'
+      textArea.style.opacity = '0'
+      document.body.appendChild(textArea)
+      textArea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textArea)
+      setCopiedJobId(jobId)
+      setTimeout(() => setCopiedJobId(null), 2000)
+    }
+  }
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -135,14 +158,21 @@ export default function JobsPage() {
                       <Button 
                         variant="outline" 
                         size="sm"
-                        onClick={() => {
-                          const url = typeof window !== 'undefined' ? `${window.location.origin}/apply/${job.id}` : ''
-                          navigator.clipboard.writeText(url)
-                          alert('Application link copied!')
-                        }}
+                        onClick={() => handleCopyLink(job.id)}
                         title="Copy application link"
+                        className="flex items-center gap-1"
                       >
-                        📋 Copy Link
+                        {copiedJobId === job.id ? (
+                          <>
+                            <Check className="w-3 h-3" />
+                            <span>Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Copy Link</span>
+                          </>
+                        )}
                       </Button>
                       <Button 
                         variant="outline" 

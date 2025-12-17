@@ -13,6 +13,7 @@ import { apiClient } from '@/lib/api/client'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { JobDescription } from '@/types'
+import { Check, Copy } from 'lucide-react'
 
 export default function JobDetailPage() {
   const router = useRouter()
@@ -22,6 +23,7 @@ export default function JobDetailPage() {
   const [job, setJob] = useState<JobDescription | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -118,19 +120,45 @@ export default function JobDetailPage() {
             <div className="flex items-center gap-2">
               <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
                 <p className="text-xs text-gray-500 mb-1">Application URL</p>
-                <p className="text-sm font-mono text-gray-900 break-all">
+                <p className="text-sm font-mono text-gray-900 break-all select-all">
                   {typeof window !== 'undefined' ? `${window.location.origin}/apply/${job.id}` : 'Loading...'}
                 </p>
               </div>
               <Button
                 variant="primary"
-                onClick={() => {
+                onClick={async () => {
                   const url = typeof window !== 'undefined' ? `${window.location.origin}/apply/${job.id}` : ''
-                  navigator.clipboard.writeText(url)
-                  alert('Application link copied to clipboard!')
+                  try {
+                    await navigator.clipboard.writeText(url)
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 2000)
+                  } catch (err) {
+                    // Fallback for older browsers
+                    const textArea = document.createElement('textarea')
+                    textArea.value = url
+                    textArea.style.position = 'fixed'
+                    textArea.style.opacity = '0'
+                    document.body.appendChild(textArea)
+                    textArea.select()
+                    document.execCommand('copy')
+                    document.body.removeChild(textArea)
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 2000)
+                  }
                 }}
+                className="flex items-center gap-2"
               >
-                Copy Link
+                {copied ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" />
+                    <span>Copy Link</span>
+                  </>
+                )}
               </Button>
             </div>
             <div className="flex gap-2">

@@ -18,6 +18,10 @@ from .rankings import router as rankings_router
 from .voice import router as voice_router
 from .cv_detailed_screening import router as cv_detailed_screening_router
 from .detailed_interview_analysis import router as detailed_interview_analysis_router
+from .emails import router as emails_router
+from .email_templates import router as email_templates_router
+from .branding import router as branding_router
+from .calendar import router as calendar_router
 
 __all__ = [
     "auth_router",
@@ -35,4 +39,8 @@ __all__ = [
     "voice_router",
     "cv_detailed_screening_router",
     "detailed_interview_analysis_router",
+    "emails_router",
+    "email_templates_router",
+    "branding_router",
+    "calendar_router",
 ]

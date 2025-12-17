@@ -3,7 +3,7 @@ Job Applications API Routes
 Public application submission and recruiter management
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query, Request
 from typing import Optional, List
 from uuid import UUID
 from app.schemas.common import Response
@@ -14,6 +14,7 @@ from app.services.cv_screening_service import CVScreeningService
 from app.services.cv_parser import CVParser
 from app.models.application_form import ApplicationFormResponseCreate
 from app.utils.auth import get_current_user_id
+from app.utils.rate_limit import rate_limit_public
 from app.config import settings
 from app.database import db
 import structlog
@@ -27,7 +28,9 @@ router = APIRouter(prefix="/applications", tags=["applications"])
 
 
 @router.post("/apply", response_model=Response[JobApplication], status_code=status.HTTP_201_CREATED)
+@rate_limit_public()  # Limit: 20 requests per hour per IP (prevents spam applications)
 async def apply_for_job(
+    request: Request,
     job_description_id: UUID = Form(...),
     email: str = Form(...),
     full_name: str = Form(...),

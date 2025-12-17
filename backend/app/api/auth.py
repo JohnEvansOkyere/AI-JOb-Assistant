@@ -3,12 +3,13 @@ Authentication API Routes
 Handles user authentication and registration
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from app.schemas.auth import Token, UserLogin, UserRegister
 from app.schemas.common import Response
 from app.models.user import User
 from app.database import db
 from app.utils.auth import create_access_token, get_current_user
+from app.utils.rate_limit import rate_limit_auth
 from datetime import timedelta
 import structlog
 
@@ -18,7 +19,8 @@ router = APIRouter(prefix="/auth", tags=["authentication"])
 
 
 @router.post("/register", response_model=Response[User])
-async def register(user_data: UserRegister):
+@rate_limit_auth()  # Limit: 5 requests per minute per IP
+async def register(request: Request, user_data: UserRegister):
     """
     Register a new recruiter user
     
@@ -74,7 +76,8 @@ async def register(user_data: UserRegister):
 
 
 @router.post("/login", response_model=Response[Token])
-async def login(credentials: UserLogin):
+@rate_limit_auth()  # Limit: 5 requests per minute per IP (prevents brute force)
+async def login(request: Request, credentials: UserLogin):
     """
     Login user and return access token
     

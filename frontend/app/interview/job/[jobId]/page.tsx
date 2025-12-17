@@ -24,7 +24,7 @@ export default function JobInterviewEntryPage() {
     const loadJob = async () => {
       try {
         // Use public endpoint - candidates don't need to be authenticated
-        const response = await apiClient.get(`/public/job-descriptions/${jobId}`)
+        const response = await apiClient.get<{ title?: string }>(`/public/job-descriptions/${jobId}`)
         if (response.success && response.data) {
           setJobTitle(response.data.title || null)
         }

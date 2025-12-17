@@ -12,7 +12,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { apiClient } from '@/lib/api/client'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { User, Mail, Trophy, Copy, Link as LinkIcon, Check } from 'lucide-react'
+import { User, Mail, Trophy, Copy, Link as LinkIcon, Check, Zap, Award, Code, BookOpen, Cpu, FileText, TrendingUp } from 'lucide-react'
 import { getInterviewLink, copyToClipboard } from '@/lib/utils/interview'
 
 interface Ticket {
@@ -37,7 +37,22 @@ interface RankedCandidate {
     phone?: string
   }
   cv_screening_results?: {
-    match_score: number
+    // Comprehensive scores (new)
+    has_detailed_screening?: boolean
+    overall_score?: number
+    job_match_score?: number
+    experience_score?: number
+    skills_score?: number
+    education_score?: number
+    ats_score?: number
+    impact_score?: number
+    format_score?: number
+    structure_score?: number
+    language_score?: number
+    top_strengths?: string[]
+    critical_issues?: string[]
+    // Legacy fields (fallback)
+    match_score?: number
     skill_match_score?: number
     experience_match_score?: number
     qualification_match_score?: number
@@ -46,6 +61,46 @@ interface RankedCandidate {
     recommendation: string
     screening_notes?: string
   }
+}
+
+// Mini score bar component
+function MiniScoreBar({ label, score, color = 'primary' }: { label: string; score: number; color?: string }) {
+  const colorClasses: Record<string, string> = {
+    primary: 'bg-primary-500',
+    green: 'bg-green-500',
+    blue: 'bg-blue-500',
+    purple: 'bg-purple-500',
+    yellow: 'bg-yellow-500',
+  }
+  
+  const bgClasses: Record<string, string> = {
+    primary: 'bg-primary-100',
+    green: 'bg-green-100',
+    blue: 'bg-blue-100',
+    purple: 'bg-purple-100',
+    yellow: 'bg-yellow-100',
+  }
+
+  const getScoreColor = (s: number) => {
+    if (s >= 75) return 'text-green-600'
+    if (s >= 50) return 'text-yellow-600'
+    return 'text-red-600'
+  }
+
+  return (
+    <div className="space-y-0.5">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-gray-600">{label}</span>
+        <span className={`font-semibold ${getScoreColor(score)}`}>{Math.round(score)}%</span>
+      </div>
+      <div className={`h-1.5 rounded-full ${bgClasses[color]} overflow-hidden`}>
+        <div 
+          className={`h-full rounded-full ${colorClasses[color]} transition-all duration-300`}
+          style={{ width: `${Math.min(100, Math.max(0, score))}%` }}
+        />
+      </div>
+    </div>
+  )
 }
 
 export default function JobRankingsPage() {
@@ -234,22 +289,27 @@ export default function JobRankingsPage() {
                           <h3 className="text-lg font-semibold text-gray-900">
                             {candidate.candidates?.full_name || 'Unknown'}
                           </h3>
+                          {candidate.cv_screening_results?.has_detailed_screening && (
+                            <span className="text-xs px-1.5 py-0.5 bg-primary-100 text-primary-700 rounded">
+                              Detailed
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 text-sm text-gray-600">
                           <Mail className="w-4 h-4" />
                           <span>{candidate.candidates?.email || 'N/A'}</span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-3">
                         {candidate.cv_screening_results && (
                           <>
                             <span className={`text-xs px-2 py-1 rounded ${getRecommendationColor(candidate.cv_screening_results.recommendation)}`}>
                               {candidate.cv_screening_results.recommendation.replace('_', ' ').toUpperCase()}
                             </span>
                             <div className="text-right">
-                              <div className="text-sm text-gray-600">Match Score</div>
-                              <div className="text-2xl font-bold text-green-600">
-                                {candidate.cv_screening_results.match_score}%
+                              <div className="text-xs text-gray-500">Overall Score</div>
+                              <div className="text-2xl font-bold text-primary-600">
+                                {Math.round(candidate.cv_screening_results.overall_score || candidate.cv_screening_results.match_score || 0)}%
                               </div>
                             </div>
                           </>
@@ -257,10 +317,66 @@ export default function JobRankingsPage() {
                       </div>
                     </div>
 
-                    {/* Screening Details */}
-                    {candidate.cv_screening_results && (
+                    {/* Comprehensive Score Bars (for detailed screening) */}
+                    {candidate.cv_screening_results?.has_detailed_screening && (
+                      <div className="pt-3 border-t space-y-3">
+                        {/* Job Match - Highlighted */}
+                        <div className="flex items-center gap-3 p-2 bg-primary-50 rounded-lg">
+                          <TrendingUp className="w-4 h-4 text-primary-600" />
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="font-medium text-primary-800">Job Match</span>
+                              <span className="font-bold text-primary-600">
+                                {Math.round(candidate.cv_screening_results.job_match_score || 0)}%
+                              </span>
+                            </div>
+                            <div className="h-2 bg-primary-200 rounded-full overflow-hidden mt-1">
+                              <div 
+                                className="h-full bg-primary-600 rounded-full"
+                                style={{ width: `${candidate.cv_screening_results.job_match_score || 0}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Category Scores Grid */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          {candidate.cv_screening_results.experience_score != null && (
+                            <MiniScoreBar 
+                              label="Experience" 
+                              score={candidate.cv_screening_results.experience_score} 
+                              color="blue" 
+                            />
+                          )}
+                          {candidate.cv_screening_results.skills_score != null && (
+                            <MiniScoreBar 
+                              label="Skills" 
+                              score={candidate.cv_screening_results.skills_score} 
+                              color="purple" 
+                            />
+                          )}
+                          {candidate.cv_screening_results.ats_score != null && (
+                            <MiniScoreBar 
+                              label="ATS" 
+                              score={candidate.cv_screening_results.ats_score} 
+                              color="green" 
+                            />
+                          )}
+                          {candidate.cv_screening_results.impact_score != null && (
+                            <MiniScoreBar 
+                              label="Impact" 
+                              score={candidate.cv_screening_results.impact_score} 
+                              color="yellow" 
+                            />
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Legacy Screening Details (for basic screening) */}
+                    {candidate.cv_screening_results && !candidate.cv_screening_results.has_detailed_screening && (
                       <div className="grid grid-cols-3 gap-4 pt-2 border-t">
-                        {candidate.cv_screening_results.skill_match_score && (
+                        {candidate.cv_screening_results.skill_match_score != null && (
                           <div>
                             <label className="text-xs font-medium text-gray-700">Skill Match</label>
                             <p className="text-sm font-semibold text-gray-900">
@@ -268,7 +384,7 @@ export default function JobRankingsPage() {
                             </p>
                           </div>
                         )}
-                        {candidate.cv_screening_results.experience_match_score && (
+                        {candidate.cv_screening_results.experience_match_score != null && (
                           <div>
                             <label className="text-xs font-medium text-gray-700">Experience Match</label>
                             <p className="text-sm font-semibold text-gray-900">
@@ -276,7 +392,7 @@ export default function JobRankingsPage() {
                             </p>
                           </div>
                         )}
-                        {candidate.cv_screening_results.qualification_match_score && (
+                        {candidate.cv_screening_results.qualification_match_score != null && (
                           <div>
                             <label className="text-xs font-medium text-gray-700">Qualification Match</label>
                             <p className="text-sm font-semibold text-gray-900">
@@ -287,13 +403,27 @@ export default function JobRankingsPage() {
                       </div>
                     )}
 
-                    {/* Strengths Preview */}
-                    {candidate.cv_screening_results?.strengths && candidate.cv_screening_results.strengths.length > 0 && (
+                    {/* Top Strengths */}
+                    {(candidate.cv_screening_results?.top_strengths?.length || candidate.cv_screening_results?.strengths?.length) ? (
                       <div>
-                        <label className="text-xs font-medium text-green-700 mb-1 block">Top Strengths</label>
+                        <label className="text-xs font-medium text-green-700 mb-1 block flex items-center gap-1">
+                          <Check className="w-3 h-3" /> Top Strengths
+                        </label>
                         <ul className="text-xs text-gray-600 list-disc list-inside">
-                          {candidate.cv_screening_results.strengths.slice(0, 3).map((s, i) => (
+                          {(candidate.cv_screening_results?.top_strengths || candidate.cv_screening_results?.strengths || []).slice(0, 3).map((s, i) => (
                             <li key={i}>{s}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+
+                    {/* Critical Issues (only for detailed screening) */}
+                    {candidate.cv_screening_results?.critical_issues && candidate.cv_screening_results.critical_issues.length > 0 && (
+                      <div>
+                        <label className="text-xs font-medium text-yellow-700 mb-1 block">⚠️ Issues to Consider</label>
+                        <ul className="text-xs text-gray-600 list-disc list-inside">
+                          {candidate.cv_screening_results.critical_issues.slice(0, 2).map((issue, i) => (
+                            <li key={i}>{issue}</li>
                           ))}
                         </ul>
                       </div>

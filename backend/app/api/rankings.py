@@ -132,14 +132,15 @@ async def get_cv_ranked_candidates(
     recruiter_id: UUID = Depends(get_current_user_id)
 ):
     """
-    Get ranked candidates for a specific job, ordered by match score (highest first)
+    Get ranked candidates for a specific job, ordered by overall score (highest first)
+    Uses detailed CV screening data when available, falls back to basic screening
     
     Args:
         job_description_id: Job description ID
         recruiter_id: Current user ID
     
     Returns:
-        List of candidates ranked by match score
+        List of candidates ranked by overall CV score
     """
     try:
         # Verify job ownership
@@ -173,32 +174,90 @@ async def get_cv_ranked_candidates(
             for candidate in (candidates_response.data or []):
                 candidates_data[candidate["id"]] = candidate
         
-        # Fetch screening results
-        screening_results = {}
+        # Fetch detailed screening results (new comprehensive system)
+        detailed_screening = {}
+        if application_ids:
+            try:
+                detailed_response = db.service_client.table("cv_detailed_screening").select("*").in_("application_id", application_ids).execute()
+                for screening in (detailed_response.data or []):
+                    detailed_screening[screening["application_id"]] = screening
+            except Exception as e:
+                logger.warning("Could not fetch detailed screening (table may not exist)", error=str(e))
+        
+        # Fetch basic screening results (fallback)
+        basic_screening = {}
         if application_ids:
             screening_response = db.service_client.table("cv_screening_results").select("*").in_("application_id", application_ids).execute()
             for screening in (screening_response.data or []):
-                screening_results[screening["application_id"]] = screening
+                basic_screening[screening["application_id"]] = screening
         
         # Combine data and filter applications with screening results
         ranked_applications = []
         for app in applications.data:
             app_id = app.get("id")
             candidate_id = app.get("candidate_id")
-            screening = screening_results.get(app_id)
             
-            # Only include applications with screening results
-            if screening and screening.get("match_score") is not None:
-                ranked_applications.append({
-                    **app,
-                    "candidates": candidates_data.get(candidate_id),
-                    "cv_screening_results": screening,
-                    "rank": 0  # Will be set after sorting
-                })
+            # Prefer detailed screening, fall back to basic
+            detailed = detailed_screening.get(app_id)
+            basic = basic_screening.get(app_id)
+            
+            # Determine the screening data to use
+            if detailed:
+                # Use comprehensive detailed screening
+                screening_data = {
+                    "has_detailed_screening": True,
+                    "overall_score": detailed.get("overall_score", 0),
+                    "job_match_score": detailed.get("job_match_score", 0),
+                    "experience_score": detailed.get("experience_score", 0),
+                    "skills_score": detailed.get("skills_score", 0),
+                    "education_score": detailed.get("education_score", 0),
+                    "ats_score": detailed.get("ats_score", 0),
+                    "impact_score": detailed.get("impact_score", 0),
+                    "format_score": detailed.get("format_score", 0),
+                    "structure_score": detailed.get("structure_score", 0),
+                    "language_score": detailed.get("language_score", 0),
+                    "recommendation": detailed.get("recommendation", "maybe_qualified"),
+                    "top_strengths": detailed.get("top_strengths", []),
+                    "critical_issues": detailed.get("critical_issues", []),
+                    "screened_at": detailed.get("screened_at"),
+                    # Keep match_score for backward compatibility
+                    "match_score": detailed.get("overall_score", 0),
+                }
+            elif basic and basic.get("match_score") is not None:
+                # Fall back to basic screening
+                screening_data = {
+                    "has_detailed_screening": False,
+                    "overall_score": basic.get("match_score", 0),
+                    "job_match_score": basic.get("match_score", 0),
+                    "experience_score": basic.get("experience_match_score"),
+                    "skills_score": basic.get("skill_match_score"),
+                    "education_score": basic.get("qualification_match_score"),
+                    "recommendation": basic.get("recommendation", "maybe_qualified"),
+                    "top_strengths": basic.get("strengths", []),
+                    "critical_issues": basic.get("gaps", []),
+                    "screened_at": basic.get("screened_at"),
+                    # Keep original fields
+                    "match_score": basic.get("match_score", 0),
+                    "skill_match_score": basic.get("skill_match_score"),
+                    "experience_match_score": basic.get("experience_match_score"),
+                    "qualification_match_score": basic.get("qualification_match_score"),
+                    "strengths": basic.get("strengths", []),
+                    "gaps": basic.get("gaps", []),
+                }
+            else:
+                # No screening data, skip this application
+                continue
+            
+            ranked_applications.append({
+                **app,
+                "candidates": candidates_data.get(candidate_id),
+                "cv_screening_results": screening_data,
+                "rank": 0  # Will be set after sorting
+            })
         
-        # Sort by match score (descending)
+        # Sort by overall score (descending) - use overall_score from detailed or match_score from basic
         ranked_applications.sort(
-            key=lambda x: x.get("cv_screening_results", {}).get("match_score", 0),
+            key=lambda x: float(x.get("cv_screening_results", {}).get("overall_score", 0) or 0),
             reverse=True
         )
         

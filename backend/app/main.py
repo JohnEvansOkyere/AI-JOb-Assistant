@@ -22,6 +22,8 @@ from app.api import (
     candidates_router,
     rankings_router,
     voice_router,
+    cv_detailed_screening_router,
+    detailed_interview_analysis_router,
 )
 from app.utils.errors import (
     app_exception_handler,
@@ -123,6 +125,8 @@ app.include_router(stats_router)
 app.include_router(candidates_router)
 app.include_router(rankings_router)
 app.include_router(voice_router)
+app.include_router(cv_detailed_screening_router)
+app.include_router(detailed_interview_analysis_router)
 
 if __name__ == "__main__":
     import uvicorn

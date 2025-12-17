@@ -91,6 +91,7 @@ AI-JOb-Assistant/
 ## Key Documentation
 
 - **Phase Documentation**: See `docs/PHASE_*.md` for detailed implementation guides
+- **CV Screening System**: See `docs/CV_SCREENING_SYSTEM.md` for comprehensive Resume Worded-style CV analysis
 - **Interview Link System**: See `docs/INTERVIEW_LINK_SYSTEM.md` for job-specific interview link sharing
 - **Text Interview Robustness**: See `docs/TEXT_INTERVIEW_ROBUSTNESS.md` for production-ready improvements
 - **Enterprise Readiness**: See `docs/ENTERPRISE_READINESS.md` for production deployment checklist
@@ -112,6 +113,18 @@ AI-JOb-Assistant/
 - Match scoring (0-100) with detailed breakdowns
 - Application status tracking
 - Interview ticket generation from qualified candidates
+
+### Comprehensive CV Screening (Resume Worded Style)
+- **Multi-category scoring**: 9 categories with 20+ criteria
+- **Experience analysis**: Action verbs, quantification, accomplishments
+- **Skills matching**: Technical/soft skills with job requirement comparison
+- **ATS compatibility**: Parsability and keyword optimization
+- **Format analysis**: Consistency, template, fonts, page length
+- **Structure analysis**: Section organization, contact info
+- **Language analysis**: Grammar, tense, pronouns, filler words
+- **Impact analysis**: Brevity, clarity, professionalism
+- **Visual dashboard**: Animated score bars and circles
+- **Strengths & issues**: Actionable improvement suggestions
 
 
 ## Environment Variables

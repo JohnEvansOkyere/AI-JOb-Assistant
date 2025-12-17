@@ -293,15 +293,15 @@ export default function JobApplicationsPage() {
                         )}
                       </Button>
                     )}
-                    {app.cv_screening_results?.recommendation === 'qualified' && (
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => router.push(`/dashboard/jobs/${jobId}/applications/${app.id}/create-ticket`)}
-                      >
-                        Create Interview Ticket
-                      </Button>
-                    )}
+                    {/* Generate Ticket - available for all candidates */}
+                    <Button
+                      variant={app.cv_screening_results?.recommendation === 'qualified' ? 'primary' : 'outline'}
+                      size="sm"
+                      onClick={() => router.push(`/dashboard/jobs/${jobId}/applications/${app.id}/create-ticket`)}
+                      title="Generate interview ticket for this candidate"
+                    >
+                      🎫 Generate Ticket
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"

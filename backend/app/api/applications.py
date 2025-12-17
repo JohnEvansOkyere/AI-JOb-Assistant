@@ -299,6 +299,59 @@ async def list_all_applications(
         )
 
 
+@router.get("/{application_id}", response_model=Response[dict])
+async def get_application(
+    application_id: UUID,
+    recruiter_id: UUID = Depends(get_current_user_id)
+):
+    """
+    Get a single application by ID
+    
+    Args:
+        application_id: Application ID
+        recruiter_id: Current user ID (for authorization)
+    
+    Returns:
+        Application with candidate and job details
+    """
+    try:
+        # Get application with related data
+        result = db.service_client.table("job_applications").select(
+            "*, candidates(id, full_name, email, phone), job_descriptions(id, title, recruiter_id)"
+        ).eq("id", str(application_id)).execute()
+        
+        if not result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Application not found"
+            )
+        
+        application = result.data[0]
+        
+        # Verify recruiter owns the job
+        job_data = application.get("job_descriptions", {})
+        if job_data.get("recruiter_id") != str(recruiter_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to view this application"
+            )
+        
+        return Response(
+            success=True,
+            message="Application retrieved successfully",
+            data=application
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error getting application", error=str(e), application_id=str(application_id))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
 @router.get("/job/{job_description_id}", response_model=Response[List[dict]])
 async def list_applications(
     job_description_id: UUID,

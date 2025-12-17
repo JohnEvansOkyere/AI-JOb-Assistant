@@ -12,6 +12,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { apiClient } from '@/lib/api/client'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { CVScreeningSidebar } from '@/components/cv-screening'
 
 interface CV {
   id: string
@@ -261,236 +262,199 @@ export default function ApplicationDetailsPage() {
           </Card>
         )}
 
-        {/* Candidate Information */}
-        <Card>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Candidate Information</h2>
-          <div className="space-y-3">
-            <div>
-              <label className="text-sm font-medium text-gray-700">Full Name</label>
-              <p className="text-gray-900">{application.candidates?.full_name || 'N/A'}</p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Email</label>
-              <p className="text-gray-900">{application.candidates?.email || 'N/A'}</p>
-            </div>
-            {application.candidates?.phone && (
-              <div>
-                <label className="text-sm font-medium text-gray-700">Phone</label>
-                <p className="text-gray-900">{application.candidates.phone}</p>
-              </div>
-            )}
-          </div>
-        </Card>
-
-        {/* Application Details */}
-        <Card>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Application Details</h2>
-          <div className="space-y-3">
-            <div>
-              <label className="text-sm font-medium text-gray-700">Status</label>
-              <div className="mt-1">
-                <span className={`text-xs px-2 py-1 rounded ${getStatusColor(application.status)}`}>
-                  {application.status.charAt(0).toUpperCase() + application.status.slice(1)}
-                </span>
-              </div>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Applied At</label>
-              <p className="text-gray-900">
-                {new Date(application.applied_at).toLocaleString()}
-              </p>
-            </div>
-            {application.screened_at && (
-              <div>
-                <label className="text-sm font-medium text-gray-700">Screened At</label>
-                <p className="text-gray-900">
-                  {new Date(application.screened_at).toLocaleString()}
-                </p>
-              </div>
-            )}
-            {application.cover_letter && (
-              <div>
-                <label className="text-sm font-medium text-gray-700">Cover Letter</label>
-                <div className="mt-1 p-3 bg-gray-50 rounded text-gray-900 whitespace-pre-wrap">
-                  {application.cover_letter}
-                </div>
-              </div>
-            )}
-          </div>
-        </Card>
-
-        {/* CV Document */}
-        {application.cv_id && (
-          <Card>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">CV / Resume</h2>
-            <div className="space-y-3">
-              {application.cvs && (
+        {/* Two Column Layout: Main Content + CV Screening Sidebar */}
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          {/* Left Column: Application Details */}
+          <div className="xl:col-span-2 space-y-6">
+            {/* Candidate Information */}
+            <Card>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Candidate Information</h2>
+              <div className="space-y-3">
                 <div>
-                  <label className="text-sm font-medium text-gray-700">File Name</label>
-                  <p className="text-gray-900">{application.cvs.file_name || 'CV Document'}</p>
-                  {application.cvs.file_size && (
-                    <p className="text-sm text-gray-600 mt-1">
-                      {(application.cvs.file_size / 1024).toFixed(2)} KB
-                    </p>
-                  )}
+                  <label className="text-sm font-medium text-gray-700">Full Name</label>
+                  <p className="text-gray-900">{application.candidates?.full_name || 'N/A'}</p>
                 </div>
-              )}
-              <div className="flex gap-2">
-                {cvDownloadUrl ? (
-                  <>
-                    <Button
-                      variant="primary"
-                      onClick={() => window.open(cvDownloadUrl, '_blank')}
-                    >
-                      View CV
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        const link = document.createElement('a')
-                        link.href = cvDownloadUrl
-                        link.download = application.cvs?.file_name || 'cv.pdf'
-                        link.click()
-                      }}
-                    >
-                      Download CV
-                    </Button>
-                  </>
-                ) : loadingCv ? (
-                  <Button variant="outline" disabled>
-                    Loading CV...
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    onClick={() => loadCvDownloadUrl(application.cv_id)}
-                  >
-                    Load CV
-                  </Button>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Email</label>
+                  <p className="text-gray-900">{application.candidates?.email || 'N/A'}</p>
+                </div>
+                {application.candidates?.phone && (
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">Phone</label>
+                    <p className="text-gray-900">{application.candidates.phone}</p>
+                  </div>
                 )}
               </div>
-              {application.cvs?.parsed_text && (
-                <div className="mt-4">
-                  <label className="text-sm font-medium text-gray-700 mb-2 block">CV Text Content</label>
-                  <div className="p-3 bg-gray-50 rounded text-gray-900 whitespace-pre-wrap max-h-96 overflow-y-auto text-sm">
-                    {application.cvs.parsed_text}
-                  </div>
-                </div>
-              )}
-            </div>
-          </Card>
-        )}
+            </Card>
 
-        {/* Screening Results */}
-        {application.cv_screening_results && (
-          <Card>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">CV Screening Results</h2>
-            <div className="space-y-4">
-              <div className="flex items-center gap-4">
+            {/* Application Details */}
+            <Card>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Application Details</h2>
+              <div className="space-y-3">
                 <div>
-                  <label className="text-sm font-medium text-gray-700">Overall Match Score</label>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {application.cv_screening_results.match_score}%
-                  </p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Recommendation</label>
+                  <label className="text-sm font-medium text-gray-700">Status</label>
                   <div className="mt-1">
-                    <span className={`text-xs px-2 py-1 rounded ${getRecommendationColor(application.cv_screening_results.recommendation)}`}>
-                      {application.cv_screening_results.recommendation.replace('_', ' ').toUpperCase()}
+                    <span className={`text-xs px-2 py-1 rounded ${getStatusColor(application.status)}`}>
+                      {application.status.charAt(0).toUpperCase() + application.status.slice(1)}
                     </span>
                   </div>
                 </div>
-              </div>
-
-              {(application.cv_screening_results.skill_match_score || 
-                application.cv_screening_results.experience_match_score || 
-                application.cv_screening_results.qualification_match_score) && (
-                <div className="grid grid-cols-3 gap-4">
-                  {application.cv_screening_results.skill_match_score && (
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Skill Match</label>
-                      <p className="text-lg font-semibold text-gray-900">
-                        {application.cv_screening_results.skill_match_score}%
-                      </p>
-                    </div>
-                  )}
-                  {application.cv_screening_results.experience_match_score && (
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Experience Match</label>
-                      <p className="text-lg font-semibold text-gray-900">
-                        {application.cv_screening_results.experience_match_score}%
-                      </p>
-                    </div>
-                  )}
-                  {application.cv_screening_results.qualification_match_score && (
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Qualification Match</label>
-                      <p className="text-lg font-semibold text-gray-900">
-                        {application.cv_screening_results.qualification_match_score}%
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {application.cv_screening_results.strengths && application.cv_screening_results.strengths.length > 0 && (
                 <div>
-                  <label className="text-sm font-medium text-green-700 mb-2 block">Strengths</label>
-                  <ul className="list-disc list-inside space-y-1">
-                    {application.cv_screening_results.strengths.map((strength, index) => (
-                      <li key={index} className="text-gray-700">{strength}</li>
-                    ))}
-                  </ul>
+                  <label className="text-sm font-medium text-gray-700">Applied At</label>
+                  <p className="text-gray-900">
+                    {new Date(application.applied_at).toLocaleString()}
+                  </p>
                 </div>
-              )}
-
-              {application.cv_screening_results.gaps && application.cv_screening_results.gaps.length > 0 && (
-                <div>
-                  <label className="text-sm font-medium text-red-700 mb-2 block">Gaps / Areas for Improvement</label>
-                  <ul className="list-disc list-inside space-y-1">
-                    {application.cv_screening_results.gaps.map((gap, index) => (
-                      <li key={index} className="text-gray-700">{gap}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {application.cv_screening_results.screening_notes && (
-                <div>
-                  <label className="text-sm font-medium text-gray-700 mb-2 block">AI Screening Analysis</label>
-                  <div className="p-4 bg-blue-50 border border-blue-200 rounded text-gray-900 whitespace-pre-wrap">
-                    {application.cv_screening_results.screening_notes}
+                {application.screened_at && (
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">Screened At</label>
+                    <p className="text-gray-900">
+                      {new Date(application.screened_at).toLocaleString()}
+                    </p>
                   </div>
-                </div>
-              )}
+                )}
+                {application.cover_letter && (
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">Cover Letter</label>
+                    <div className="mt-1 p-3 bg-gray-50 rounded text-gray-900 whitespace-pre-wrap">
+                      {application.cover_letter}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
 
-              {/* Action Button for Qualified Candidates */}
-              {application.cv_screening_results.recommendation === 'qualified' && (
-                <div className="pt-4 border-t">
-                  <Button
-                    variant="primary"
-                    onClick={() => router.push(`/dashboard/jobs/${jobId}/applications/${applicationId}/create-ticket`)}
-                    className="w-full"
-                  >
-                    Issue Interview Ticket
+            {/* CV Document */}
+            {application.cv_id && (
+              <Card>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">CV / Resume</h2>
+                <div className="space-y-3">
+                  {application.cvs && (
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">File Name</label>
+                      <p className="text-gray-900">{application.cvs.file_name || 'CV Document'}</p>
+                      {application.cvs.file_size && (
+                        <p className="text-sm text-gray-600 mt-1">
+                          {(application.cvs.file_size / 1024).toFixed(2)} KB
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    {cvDownloadUrl ? (
+                      <>
+                        <Button
+                          variant="primary"
+                          onClick={() => window.open(cvDownloadUrl, '_blank')}
+                        >
+                          View CV
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            const link = document.createElement('a')
+                            link.href = cvDownloadUrl
+                            link.download = application.cvs?.file_name || 'cv.pdf'
+                            link.click()
+                          }}
+                        >
+                          Download CV
+                        </Button>
+                      </>
+                    ) : loadingCv ? (
+                      <Button variant="outline" disabled>
+                        Loading CV...
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        onClick={() => loadCvDownloadUrl(application.cv_id)}
+                      >
+                        Load CV
+                      </Button>
+                    )}
+                  </div>
+                  {application.cvs?.parsed_text && (
+                    <div className="mt-4">
+                      <label className="text-sm font-medium text-gray-700 mb-2 block">CV Text Content</label>
+                      <div className="p-3 bg-gray-50 rounded text-gray-900 whitespace-pre-wrap max-h-96 overflow-y-auto text-sm">
+                        {application.cvs.parsed_text}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
+
+            {/* Basic Screening Results */}
+            {application.cv_screening_results && (
+              <Card>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Screening Summary</h2>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Overall Match Score</label>
+                      <p className="text-2xl font-bold text-gray-900">
+                        {application.cv_screening_results.match_score}%
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Recommendation</label>
+                      <div className="mt-1">
+                        <span className={`text-xs px-2 py-1 rounded ${getRecommendationColor(application.cv_screening_results.recommendation)}`}>
+                          {application.cv_screening_results.recommendation.replace('_', ' ').toUpperCase()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {application.cv_screening_results.screening_notes && (
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mb-2 block">AI Analysis Notes</label>
+                      <div className="p-4 bg-blue-50 border border-blue-200 rounded text-gray-900 whitespace-pre-wrap text-sm">
+                        {application.cv_screening_results.screening_notes}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action Button for Qualified Candidates */}
+                  {application.cv_screening_results.recommendation === 'qualified' && (
+                    <div className="pt-4 border-t">
+                      <Button
+                        variant="primary"
+                        onClick={() => router.push(`/dashboard/jobs/${jobId}/applications/${applicationId}/create-ticket`)}
+                        className="w-full"
+                      >
+                        Issue Interview Ticket
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
+
+            {!application.cv_screening_results && application.status === 'pending' && (
+              <Card>
+                <div className="text-center py-8">
+                  <p className="text-gray-600 mb-4">This application has not been screened yet.</p>
+                  <Button variant="primary" onClick={handleScreen} disabled={screening} loading={screening}>
+                    {screening ? 'Screening...' : 'Screen Application'}
                   </Button>
                 </div>
-              )}
-            </div>
-          </Card>
-        )}
+              </Card>
+            )}
+          </div>
 
-        {!application.cv_screening_results && application.status === 'pending' && (
-          <Card>
-            <div className="text-center py-8">
-              <p className="text-gray-600 mb-4">This application has not been screened yet.</p>
-              <Button variant="primary" onClick={handleScreen} disabled={screening} loading={screening}>
-                {screening ? 'Screening...' : 'Screen Application'}
-              </Button>
+          {/* Right Column: Detailed CV Screening Sidebar */}
+          <div className="xl:col-span-1">
+            <div className="sticky top-6">
+              <CVScreeningSidebar 
+                applicationId={applicationId} 
+                onAnalysisComplete={loadApplication}
+              />
             </div>
-          </Card>
-        )}
+          </div>
+        </div>
       </div>
     </DashboardLayout>
   )

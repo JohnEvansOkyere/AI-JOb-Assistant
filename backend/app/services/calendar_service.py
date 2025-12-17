@@ -7,6 +7,7 @@ from typing import Optional, Dict, Any, List
 from uuid import UUID
 from datetime import datetime, timedelta
 from app.database import db
+from app.services.email_service import EmailService
 import structlog
 
 logger = structlog.get_logger()
@@ -64,6 +65,16 @@ class CalendarService:
             
             event = response.data[0]
             
+            # Send email notification to candidate
+            try:
+                await CalendarService._send_event_invitation_email(
+                    recruiter_id=recruiter_id,
+                    event=event
+                )
+            except Exception as email_error:
+                logger.warning("Failed to send calendar event email", error=str(email_error), event_id=event["id"])
+                # Don't fail event creation if email fails
+            
             # Try to sync with external calendar if integration exists
             await CalendarService.sync_event_to_external_calendar(
                 recruiter_id=recruiter_id,
@@ -75,6 +86,120 @@ class CalendarService:
             
         except Exception as e:
             logger.error("Error creating calendar event", error=str(e))
+            raise
+    
+    @staticmethod
+    async def _send_event_invitation_email(
+        recruiter_id: UUID,
+        event: Dict[str, Any]
+    ) -> None:
+        """Send calendar event invitation email to candidate"""
+        try:
+            # Get candidate details
+            candidate_response = db.service_client.table("candidates").select(
+                "email, full_name"
+            ).eq("id", event["candidate_id"]).execute()
+            
+            if not candidate_response.data:
+                logger.warning("Candidate not found for calendar event", candidate_id=event["candidate_id"])
+                return
+            
+            candidate = candidate_response.data[0]
+            candidate_email = candidate.get("email")
+            candidate_name = candidate.get("full_name", "Candidate")
+            
+            if not candidate_email:
+                logger.warning("Candidate email not found", candidate_id=event["candidate_id"])
+                return
+            
+            # Get job title if job_description_id exists
+            job_title = None
+            if event.get("job_description_id"):
+                job_response = db.service_client.table("job_descriptions").select("title").eq(
+                    "id", event["job_description_id"]
+                ).execute()
+                if job_response.data:
+                    job_title = job_response.data[0].get("title")
+            
+            # Format event details
+            start_dt = datetime.fromisoformat(event["start_time"].replace('Z', '+00:00'))
+            end_dt = datetime.fromisoformat(event["end_time"].replace('Z', '+00:00'))
+            
+            # Format date and time
+            start_str = start_dt.strftime("%B %d, %Y at %I:%M %p")
+            end_str = end_dt.strftime("%I:%M %p")
+            
+            # Create email template using Jinja2
+            template_html = """
+            <div style="max-width: 600px; margin: 0 auto;">
+                <h2 style="color: {{primary_color}};">Calendar Event Invitation</h2>
+                <p>Dear {{candidate_name}},</p>
+                <p>You have been invited to a calendar event:</p>
+                
+                <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                    <h3 style="margin-top: 0; color: #1f2937;">{{event_title}}</h3>
+                    
+                    <p><strong>📅 Date & Time:</strong><br>
+                    {{start_time}} - {{end_time}}</p>
+                    
+                    {% if location %}
+                    <p><strong>📍 Location:</strong><br>{{location}}</p>
+                    {% endif %}
+                    
+                    {% if video_link %}
+                    <p><strong>💻 Video Link:</strong><br><a href="{{video_link}}" style="color: {{primary_color}};">{{video_link}}</a></p>
+                    {% endif %}
+                    
+                    {% if description %}
+                    <p><strong>📝 Description:</strong><br>{{description}}</p>
+                    {% endif %}
+                </div>
+                
+                {% if job_title %}
+                <p style="margin-top: 20px;">This event is related to the <strong>{{job_title}}</strong> position.</p>
+                {% endif %}
+                
+                <p>Please make sure to add this event to your calendar. If you have any questions or need to reschedule, please don't hesitate to reach out.</p>
+                
+                <p>Best regards,<br>The Hiring Team</p>
+            </div>
+            """
+            
+            # Get branding for primary color
+            branding = await EmailService.get_company_branding(recruiter_id)
+            primary_color = branding.get("primary_color", "#2563eb") if branding else "#2563eb"
+            
+            # Render template
+            template_vars = {
+                "candidate_name": candidate_name,
+                "event_title": event.get('title', 'Event'),
+                "start_time": start_str,
+                "end_time": end_str,
+                "location": event.get("location", ""),
+                "video_link": event.get("video_link", ""),
+                "description": event.get("description", ""),
+                "job_title": job_title,
+                "primary_color": primary_color,
+            }
+            
+            body_html = EmailService.render_template(template_html, template_vars)
+            subject = f"Calendar Event Invitation: {event.get('title', 'Event')}"
+            
+            # Send email
+            await EmailService.send_email(
+                recruiter_id=recruiter_id,
+                recipient_email=candidate_email,
+                recipient_name=candidate_name,
+                subject=subject,
+                body_html=body_html,
+                candidate_id=UUID(event["candidate_id"]),
+                job_description_id=UUID(event["job_description_id"]) if event.get("job_description_id") else None,
+            )
+            
+            logger.info("Calendar event invitation email sent", event_id=event["id"], recipient=candidate_email)
+            
+        except Exception as e:
+            logger.error("Error sending calendar event invitation email", error=str(e), event_id=event.get("id"))
             raise
     
     @staticmethod

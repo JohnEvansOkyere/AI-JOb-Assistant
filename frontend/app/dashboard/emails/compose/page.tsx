@@ -197,7 +197,7 @@ export default function ComposeEmailPage() {
         apiClient.setToken(token)
       }
 
-      const response = await apiClient.post('/emails/preview-interview-invitation', {
+      const response = await apiClient.post<any>('/emails/preview-interview-invitation', {
         candidate_id: interviewForm.candidate_id,
         job_description_id: interviewForm.job_description_id,
         expires_in_hours: 48,
@@ -207,11 +207,14 @@ export default function ComposeEmailPage() {
       })
 
       if (response.success && response.data) {
-        setInterviewPreviewHtml(response.data.html)
+        const data = response.data as { html?: string; subject?: string; recipient_email?: string; recipient_name?: string }
+        if (data.html) {
+          setInterviewPreviewHtml(data.html)
+        }
         setInterviewPreviewData({
-          subject: response.data.subject,
-          recipient_email: response.data.recipient_email,
-          recipient_name: response.data.recipient_name,
+          subject: data.subject || '',
+          recipient_email: data.recipient_email || '',
+          recipient_name: data.recipient_name || '',
         })
         setShowPreview(true)
       } else {
@@ -238,7 +241,7 @@ export default function ComposeEmailPage() {
         apiClient.setToken(token)
       }
 
-      const response = await apiClient.post('/emails/preview-offer-letter', {
+      const response = await apiClient.post<any>('/emails/preview-offer-letter', {
         candidate_id: offerForm.candidate_id,
         job_description_id: offerForm.job_description_id,
         salary: offerForm.salary || null,
@@ -251,11 +254,14 @@ export default function ComposeEmailPage() {
       })
 
       if (response.success && response.data) {
-        setPreviewHtml(response.data.html)
+        const data = response.data as { html?: string; subject?: string; recipient_email?: string; recipient_name?: string }
+        if (data.html) {
+          setPreviewHtml(data.html)
+        }
         setPreviewData({
-          subject: response.data.subject,
-          recipient_email: response.data.recipient_email,
-          recipient_name: response.data.recipient_name,
+          subject: data.subject || '',
+          recipient_email: data.recipient_email || '',
+          recipient_name: data.recipient_name || '',
         })
         setShowPreview(true)
       } else {

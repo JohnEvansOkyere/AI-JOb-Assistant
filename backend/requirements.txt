@@ -45,7 +45,7 @@ resend==2.1.0  # Resend email API
 jinja2==3.1.2  # Template engine for email templates
 
 # Calendar Integration
-google-api-python-client==2.108.0
+google-api-python-client>=2.111.0
 google-auth-httplib2==0.1.1
 google-auth-oauthlib==1.1.0
 

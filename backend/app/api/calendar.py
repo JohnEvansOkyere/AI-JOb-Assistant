@@ -3,7 +3,7 @@ Calendar API Routes
 Handles calendar events, bookings, and Google Calendar integration
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Body
 from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
@@ -21,19 +21,19 @@ router = APIRouter(prefix="/calendar", tags=["calendar"])
 @router.post("/events", status_code=status.HTTP_201_CREATED)
 async def create_calendar_event(
     request: Request,
-    candidate_id: UUID,
-    title: str,
-    start_time: datetime,
-    end_time: datetime,
-    description: Optional[str] = None,
-    location: Optional[str] = None,
-    is_virtual: bool = False,
-    video_link: Optional[str] = None,
-    job_description_id: Optional[UUID] = None,
-    interview_id: Optional[UUID] = None,
-    timezone: str = "UTC",
-    attendee_emails: Optional[List[str]] = None,
-    attendee_names: Optional[List[str]] = None,
+    candidate_id: UUID = Body(...),
+    title: str = Body(...),
+    start_time: str = Body(...),  # Accept as string, parse to datetime
+    end_time: str = Body(...),    # Accept as string, parse to datetime
+    description: Optional[str] = Body(None),
+    location: Optional[str] = Body(None),
+    is_virtual: bool = Body(False),
+    video_link: Optional[str] = Body(None),
+    job_description_id: Optional[UUID] = Body(None),
+    interview_id: Optional[UUID] = Body(None),
+    timezone: str = Body("UTC"),
+    attendee_emails: Optional[List[str]] = Body(None),
+    attendee_names: Optional[List[str]] = Body(None),
     recruiter_id: UUID = Depends(get_current_user_id)
 ):
     """
@@ -43,12 +43,16 @@ async def create_calendar_event(
         Created calendar event
     """
     try:
+        # Parse datetime strings to datetime objects
+        start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+        end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+        
         event = await CalendarService.create_calendar_event(
             recruiter_id=recruiter_id,
             candidate_id=candidate_id,
             title=title,
-            start_time=start_time,
-            end_time=end_time,
+            start_time=start_dt,
+            end_time=end_dt,
             description=description,
             location=location,
             is_virtual=is_virtual,

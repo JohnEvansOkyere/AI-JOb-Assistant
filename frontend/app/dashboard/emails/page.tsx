@@ -12,13 +12,14 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { apiClient } from '@/lib/api/client'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { Mail, Send, History, Settings } from 'lucide-react'
+import { Mail, Send, History, Settings, Calendar, FileText, Clock } from 'lucide-react'
 
 export default function EmailsPage() {
   const router = useRouter()
   const { isAuthenticated, loading: authLoading } = useAuth()
   const [sentEmails, setSentEmails] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [calendarEvents, setCalendarEvents] = useState<any[]>([])
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -28,8 +29,27 @@ export default function EmailsPage() {
 
     if (isAuthenticated) {
       loadSentEmails()
+      loadCalendarEvents()
     }
   }, [isAuthenticated, authLoading, router])
+
+  const loadCalendarEvents = async () => {
+    try {
+      const token = localStorage.getItem('auth_token')
+      if (token) {
+        apiClient.setToken(token)
+      }
+      const response = await apiClient.get<any>('/calendar/events?limit=5')
+      if (response.success && response.data) {
+        const eventsList = Array.isArray(response.data) 
+          ? response.data 
+          : (Array.isArray(response.data?.data) ? response.data.data : [])
+        setCalendarEvents(eventsList)
+      }
+    } catch (err: any) {
+      console.error('Error loading calendar events:', err)
+    }
+  }
 
   const loadSentEmails = async () => {
     try {
@@ -97,7 +117,7 @@ export default function EmailsPage() {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
             <div className="p-6">
               <div className="flex items-center gap-4">
@@ -146,20 +166,65 @@ export default function EmailsPage() {
             <div className="p-6">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                  <Settings className="w-6 h-6 text-purple-600" />
+                  <FileText className="w-6 h-6 text-purple-600" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900">Branding</h3>
-                  <p className="text-sm text-gray-600">Manage letterhead</p>
+                  <h3 className="font-semibold text-gray-900">Templates</h3>
+                  <p className="text-sm text-gray-600">Manage email templates</p>
                 </div>
               </div>
               <Button
                 variant="outline"
                 size="sm"
                 className="w-full mt-4"
-                onClick={() => router.push('/dashboard/settings/branding')}
+                onClick={() => router.push('/dashboard/emails/templates')}
               >
-                Manage
+                Manage Templates
+              </Button>
+            </div>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-lg transition-shadow"
+            onClick={() => router.push('/dashboard/calendar')}
+          >
+            <div className="p-6">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                  <Calendar className="w-6 h-6 text-orange-600" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-900">Calendar</h3>
+                  <p className="text-sm text-gray-600">View upcoming events</p>
+                </div>
+              </div>
+              <div className="mt-4 space-y-2">
+                {calendarEvents.length > 0 ? (
+                  <>
+                    {calendarEvents.slice(0, 3).map((event) => (
+                      <div key={event.id} className="flex items-center gap-2 text-xs text-gray-600">
+                        <Clock className="w-3 h-3" />
+                        <span className="truncate">{event.title || 'Untitled Event'}</span>
+                      </div>
+                    ))}
+                    {calendarEvents.length > 3 && (
+                      <p className="text-xs text-gray-500">+{calendarEvents.length - 3} more</p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-xs text-gray-500">No upcoming events</p>
+                )}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full mt-4"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  router.push('/dashboard/calendar')
+                }}
+              >
+                View Calendar
               </Button>
             </div>
           </Card>

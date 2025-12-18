@@ -13,6 +13,7 @@ import { apiClient } from '@/lib/api/client'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
+
 import { ArrowLeft, Send, Eye, FileText, Mail, CheckCircle, X } from 'lucide-react'
 
 type EmailType = 'interview' | 'offer'
@@ -189,30 +190,26 @@ export default function ComposeEmailPage() {
       alert('Please select a candidate and job to preview')
       return
     }
-
+  
     try {
       setInterviewPreviewLoading(true)
       const token = localStorage.getItem('auth_token')
       if (token) {
         apiClient.setToken(token)
       }
-
-      type PreviewResponse = {
-        html: string
-        subject: string
-        recipient_email: string
-        recipient_name: string
-      }
-
-      const response = await apiClient.post<PreviewResponse>('/emails/preview-interview-invitation', {
-        candidate_id: interviewForm.candidate_id,
-        job_description_id: interviewForm.job_description_id,
-        expires_in_hours: 48,
-        from_email: senderInfo.from_email || undefined,
-        from_name: senderInfo.from_name || undefined,
-        email_provider: senderInfo.email_provider || undefined,
-      })
-
+  
+      const response: ApiResponse<EmailPreviewResponse> = await apiClient.post(
+        '/emails/preview-interview-invitation',
+        {
+          candidate_id: interviewForm.candidate_id,
+          job_description_id: interviewForm.job_description_id,
+          expires_in_hours: 48,
+          from_email: senderInfo.from_email || undefined,
+          from_name: senderInfo.from_name || undefined,
+          email_provider: senderInfo.email_provider || undefined,
+        }
+      )
+  
       if (response.success && response.data) {
         setInterviewPreviewHtml(response.data.html || '')
         setInterviewPreviewData({
@@ -237,33 +234,29 @@ export default function ComposeEmailPage() {
       alert('Please select a candidate and job to preview')
       return
     }
-
+  
     try {
       setPreviewLoading(true)
       const token = localStorage.getItem('auth_token')
       if (token) {
         apiClient.setToken(token)
       }
-
-      type PreviewResponse = {
-        html: string
-        subject: string
-        recipient_email: string
-        recipient_name: string
-      }
-
-      const response = await apiClient.post<PreviewResponse>('/emails/preview-offer-letter', {
-        candidate_id: offerForm.candidate_id,
-        job_description_id: offerForm.job_description_id,
-        salary: offerForm.salary || null,
-        start_date: offerForm.start_date || null,
-        location: offerForm.location || null,
-        employment_type: offerForm.employment_type || null,
-        from_email: senderInfo.from_email || undefined,
-        from_name: senderInfo.from_name || undefined,
-        email_provider: senderInfo.email_provider || undefined,
-      })
-
+  
+      const response: ApiResponse<EmailPreviewResponse> = await apiClient.post(
+        '/emails/preview-offer-letter',
+        {
+          candidate_id: offerForm.candidate_id,
+          job_description_id: offerForm.job_description_id,
+          salary: offerForm.salary || null,
+          start_date: offerForm.start_date || null,
+          location: offerForm.location || null,
+          employment_type: offerForm.employment_type || null,
+          from_email: senderInfo.from_email || undefined,
+          from_name: senderInfo.from_name || undefined,
+          email_provider: senderInfo.email_provider || undefined,
+        }
+      )
+  
       if (response.success && response.data) {
         setPreviewHtml(response.data.html || '')
         setPreviewData({
@@ -283,6 +276,8 @@ export default function ComposeEmailPage() {
     }
   }
 
+
+  
   const handleSendOfferLetter = async () => {
     if (!offerForm.candidate_id || !offerForm.job_description_id || !offerForm.offer_letter_file) {
       alert('Please select candidate, job, and upload offer letter PDF')

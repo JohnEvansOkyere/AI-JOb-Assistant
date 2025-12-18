@@ -91,3 +91,15 @@ export interface InterviewReport {
   updated_at: string
 }
 
+export interface EmailPreviewResponse {
+  html: string
+  subject: string
+  recipient_email: string
+  recipient_name: string
+}
+
+export interface EmailSentResponse {
+  id: string
+  status: string
+  message: string
+}

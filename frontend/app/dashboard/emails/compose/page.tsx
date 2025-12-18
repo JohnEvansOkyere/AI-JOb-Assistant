@@ -198,7 +198,7 @@ export default function ComposeEmailPage() {
         apiClient.setToken(token)
       }
 
-      const response: ApiResponse<EmailPreviewResponse> = await apiClient.post(
+      const response = await apiClient.post<EmailPreviewResponse>(
         '/emails/preview-interview-invitation',
         {
           candidate_id: interviewForm.candidate_id,
@@ -242,7 +242,7 @@ export default function ComposeEmailPage() {
         apiClient.setToken(token)
       }
 
-      const response: ApiResponse<EmailPreviewResponse> = await apiClient.post(
+      const response = await apiClient.post<EmailPreviewResponse>(
         '/emails/preview-offer-letter',
         {
           candidate_id: offerForm.candidate_id,

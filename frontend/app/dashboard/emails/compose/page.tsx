@@ -10,7 +10,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { apiClient, ApiResponse } from '@/lib/api/client'
-import { EmailPreviewResponse } from '@/types'
+// import { EmailPreviewResponse } from '@/types' // Commented out - preview functionality disabled
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -27,21 +27,22 @@ export default function ComposeEmailPage() {
   const [loadingCandidates, setLoadingCandidates] = useState(false)
   const [candidates, setCandidates] = useState<any[]>([])
   const [jobs, setJobs] = useState<any[]>([])
-  const [showPreview, setShowPreview] = useState(false)
-  const [previewHtml, setPreviewHtml] = useState<string>('')
-  const [previewLoading, setPreviewLoading] = useState(false)
-  const [previewData, setPreviewData] = useState<{
-    subject: string
-    recipient_email: string
-    recipient_name: string
-  } | null>(null)
-  const [interviewPreviewHtml, setInterviewPreviewHtml] = useState<string>('')
-  const [interviewPreviewLoading, setInterviewPreviewLoading] = useState(false)
-  const [interviewPreviewData, setInterviewPreviewData] = useState<{
-    subject: string
-    recipient_email: string
-    recipient_name: string
-  } | null>(null)
+  // Preview-related state - commented out since preview functionality is disabled
+  // const [showPreview, setShowPreview] = useState(false)
+  // const [previewHtml, setPreviewHtml] = useState<string>('')
+  // const [previewLoading, setPreviewLoading] = useState(false)
+  // const [previewData, setPreviewData] = useState<{
+  //   subject: string
+  //   recipient_email: string
+  //   recipient_name: string
+  // } | null>(null)
+  // const [interviewPreviewHtml, setInterviewPreviewHtml] = useState<string>('')
+  // const [interviewPreviewLoading, setInterviewPreviewLoading] = useState(false)
+  // const [interviewPreviewData, setInterviewPreviewData] = useState<{
+  //   subject: string
+  //   recipient_email: string
+  //   recipient_name: string
+  // } | null>(null)
   
   // Sender information (shared between both forms)
   const [senderInfo, setSenderInfo] = useState({
@@ -788,11 +789,11 @@ export default function ComposeEmailPage() {
           </div>
         )}
 
-        {/* Preview Modal */}
+        {/* Preview Modal - COMMENTED OUT: Preview functionality disabled */}
+        {/* 
         {showPreview && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
-              {/* Modal Header */}
               <div className="flex items-center justify-between p-6 border-b">
                 <div>
                   <h2 className="text-xl font-bold text-gray-900">Email Preview</h2>
@@ -816,8 +817,6 @@ export default function ComposeEmailPage() {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-
-              {/* Modal Body - Email Preview */}
               <div className="flex-1 overflow-auto p-6 bg-gray-50">
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 max-w-2xl mx-auto">
                   <div
@@ -838,8 +837,6 @@ export default function ComposeEmailPage() {
                   )}
                 </div>
               </div>
-
-              {/* Modal Footer */}
               <div className="flex items-center justify-end gap-3 p-6 border-t bg-gray-50">
                 <Button
                   variant="outline"
@@ -887,6 +884,7 @@ export default function ComposeEmailPage() {
             </div>
           </div>
         )}
+        */}
       </div>
     </DashboardLayout>
   )

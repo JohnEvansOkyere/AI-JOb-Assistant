@@ -211,14 +211,19 @@ export default function ComposeEmailPage() {
       )
 
       if (response.success && response.data) {
-        const data = response.data as EmailPreviewResponse
-        setInterviewPreviewHtml(data.html || '')
-        setInterviewPreviewData({
-          subject: data.subject || '',
-          recipient_email: data.recipient_email || '',
-          recipient_name: data.recipient_name || '',
-        })
-        setShowPreview(true)
+        // Type guard: ensure data exists and has required properties
+        const previewData = response.data
+        if (previewData && 'html' in previewData && 'subject' in previewData) {
+          setInterviewPreviewHtml(previewData.html)
+          setInterviewPreviewData({
+            subject: previewData.subject,
+            recipient_email: previewData.recipient_email || '',
+            recipient_name: previewData.recipient_name || '',
+          })
+          setShowPreview(true)
+        } else {
+          alert('Invalid preview data received')
+        }
       } else {
         alert('Failed to generate preview: ' + response.message)
       }
@@ -259,14 +264,19 @@ export default function ComposeEmailPage() {
       )
 
       if (response.success && response.data) {
-        const data = response.data as EmailPreviewResponse
-        setPreviewHtml(data.html || '')
-        setPreviewData({
-          subject: data.subject || '',
-          recipient_email: data.recipient_email || '',
-          recipient_name: data.recipient_name || '',
-        })
-        setShowPreview(true)
+        // Type guard: ensure data exists and has required properties
+        const previewData = response.data
+        if (previewData && 'html' in previewData && 'subject' in previewData) {
+          setPreviewHtml(previewData.html)
+          setPreviewData({
+            subject: previewData.subject,
+            recipient_email: previewData.recipient_email || '',
+            recipient_name: previewData.recipient_name || '',
+          })
+          setShowPreview(true)
+        } else {
+          alert('Invalid preview data received')
+        }
       } else {
         alert('Failed to generate preview: ' + response.message)
       }

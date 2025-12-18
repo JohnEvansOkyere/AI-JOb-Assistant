@@ -211,11 +211,12 @@ export default function ComposeEmailPage() {
       )
 
       if (response.success && response.data) {
-        setInterviewPreviewHtml(response.data.html || '')
+        const data = response.data as EmailPreviewResponse
+        setInterviewPreviewHtml(data.html || '')
         setInterviewPreviewData({
-          subject: response.data.subject || '',
-          recipient_email: response.data.recipient_email || '',
-          recipient_name: response.data.recipient_name || '',
+          subject: data.subject || '',
+          recipient_email: data.recipient_email || '',
+          recipient_name: data.recipient_name || '',
         })
         setShowPreview(true)
       } else {
@@ -258,11 +259,12 @@ export default function ComposeEmailPage() {
       )
 
       if (response.success && response.data) {
-        setPreviewHtml(response.data.html || '')
+        const data = response.data as EmailPreviewResponse
+        setPreviewHtml(data.html || '')
         setPreviewData({
-          subject: response.data.subject || '',
-          recipient_email: response.data.recipient_email || '',
-          recipient_name: response.data.recipient_name || '',
+          subject: data.subject || '',
+          recipient_email: data.recipient_email || '',
+          recipient_name: data.recipient_name || '',
         })
         setShowPreview(true)
       } else {

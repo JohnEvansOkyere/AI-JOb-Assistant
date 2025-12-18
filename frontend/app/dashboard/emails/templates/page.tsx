@@ -88,11 +88,20 @@ export default function TemplatesPage() {
       }
 
       const url = filterType ? `/email-templates?template_type=${filterType}` : '/email-templates'
-      const response = await apiClient.get<EmailTemplate[]>(url)
+
+      // The backend may return either:
+      // - data: EmailTemplate[]
+      // - or data: { data: EmailTemplate[] }
+      type TemplatesResponse = EmailTemplate[] | { data: EmailTemplate[] }
+
+      const response = await apiClient.get<TemplatesResponse>(url)
       if (response.success && response.data) {
-        const templatesList = Array.isArray(response.data) 
-          ? response.data 
-          : (Array.isArray(response.data?.data) ? response.data.data : [])
+        const raw = response.data as TemplatesResponse
+        const templatesList = Array.isArray(raw)
+          ? raw
+          : Array.isArray(raw.data)
+          ? raw.data
+          : []
         setTemplates(templatesList)
       }
     } catch (err: any) {

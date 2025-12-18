@@ -5,12 +5,15 @@
 
 'use client'
 
-import { useEffect, useState } from 'react'
+// This page uses useSearchParams; disable static prerender to avoid CSR bailout error
+export const dynamic = 'force-dynamic'
+
+import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { apiClient, ApiResponse } from '@/lib/api/client'
-// import { EmailPreviewResponse } from '@/types' // Commented out - preview functionality disabled
+import type { EmailPreviewResponse } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -18,7 +21,7 @@ import { ArrowLeft, Send, Eye, FileText, Mail, CheckCircle, X } from 'lucide-rea
 
 type EmailType = 'interview' | 'offer'
 
-export default function ComposeEmailPage() {
+function ComposeEmailContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { isAuthenticated, loading: authLoading } = useAuth()
@@ -27,22 +30,22 @@ export default function ComposeEmailPage() {
   const [loadingCandidates, setLoadingCandidates] = useState(false)
   const [candidates, setCandidates] = useState<any[]>([])
   const [jobs, setJobs] = useState<any[]>([])
-  // Preview-related state - commented out since preview functionality is disabled
-  // const [showPreview, setShowPreview] = useState(false)
-  // const [previewHtml, setPreviewHtml] = useState<string>('')
-  // const [previewLoading, setPreviewLoading] = useState(false)
-  // const [previewData, setPreviewData] = useState<{
-  //   subject: string
-  //   recipient_email: string
-  //   recipient_name: string
-  // } | null>(null)
-  // const [interviewPreviewHtml, setInterviewPreviewHtml] = useState<string>('')
-  // const [interviewPreviewLoading, setInterviewPreviewLoading] = useState(false)
-  // const [interviewPreviewData, setInterviewPreviewData] = useState<{
-  //   subject: string
-  //   recipient_email: string
-  //   recipient_name: string
-  // } | null>(null)
+  // Preview state for both email types
+  const [showPreview, setShowPreview] = useState(false)
+  const [previewHtml, setPreviewHtml] = useState<string>('')
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewData, setPreviewData] = useState<{
+    subject: string
+    recipient_email: string
+    recipient_name: string
+  } | null>(null)
+  const [interviewPreviewHtml, setInterviewPreviewHtml] = useState<string>('')
+  const [interviewPreviewLoading, setInterviewPreviewLoading] = useState(false)
+  const [interviewPreviewData, setInterviewPreviewData] = useState<{
+    subject: string
+    recipient_email: string
+    recipient_name: string
+  } | null>(null)
   
   // Sender information (shared between both forms)
   const [senderInfo, setSenderInfo] = useState({
@@ -342,6 +345,106 @@ export default function ComposeEmailPage() {
     return jobs.find(j => j.id === interviewForm.job_description_id || j.id === offerForm.job_description_id)
   }
 
+  // Preview interview invitation email
+  const handlePreviewInterviewInvitation = async () => {
+    if (!interviewForm.candidate_id || !interviewForm.job_description_id) {
+      alert('Please select a candidate and job to preview')
+      return
+    }
+
+    try {
+      setInterviewPreviewLoading(true)
+      const token = localStorage.getItem('auth_token')
+      if (token) {
+        apiClient.setToken(token)
+      }
+
+      const response = await apiClient.post<EmailPreviewResponse>(
+        '/emails/preview-interview-invitation',
+        {
+          candidate_id: interviewForm.candidate_id,
+          job_description_id: interviewForm.job_description_id,
+          expires_in_hours: 48,
+          from_email: senderInfo.from_email || undefined,
+          from_name: senderInfo.from_name || undefined,
+          email_provider: senderInfo.email_provider || undefined,
+        }
+      )
+
+      if (response.success && response.data) {
+        const data = response.data as EmailPreviewResponse
+        setInterviewPreviewHtml(data.html || '')
+        setInterviewPreviewData({
+          subject: data.subject || '',
+          recipient_email: data.recipient_email || '',
+          recipient_name: data.recipient_name || '',
+        })
+        setShowPreview(true)
+      } else {
+        alert('Failed to generate preview: ' + response.message)
+      }
+    } catch (err: any) {
+      console.error('Error generating preview:', err)
+      alert('Error: ' + (err.message || 'Unknown error'))
+    } finally {
+      setInterviewPreviewLoading(false)
+    }
+  }
+
+  // Preview offer letter email
+  const handlePreviewOfferLetter = async () => {
+    if (!offerForm.candidate_id || !offerForm.job_description_id || !offerForm.offer_letter_file) {
+      alert('Please select candidate, job, and upload offer letter PDF to preview')
+      return
+    }
+
+    try {
+      setPreviewLoading(true)
+      const token = localStorage.getItem('auth_token')
+      if (token) {
+        apiClient.setToken(token)
+      }
+
+      const formData = new FormData()
+      formData.append('candidate_id', offerForm.candidate_id)
+      formData.append('job_description_id', offerForm.job_description_id)
+      if (offerForm.salary) formData.append('salary', offerForm.salary)
+      if (offerForm.start_date) formData.append('start_date', offerForm.start_date)
+      if (offerForm.location) formData.append('location', offerForm.location)
+      if (offerForm.employment_type) formData.append('employment_type', offerForm.employment_type)
+      formData.append('offer_letter_pdf', offerForm.offer_letter_file)
+      if (senderInfo.from_email) formData.append('from_email', senderInfo.from_email)
+      if (senderInfo.from_name) formData.append('from_name', senderInfo.from_name)
+      if (senderInfo.email_provider) formData.append('email_provider', senderInfo.email_provider)
+
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      const res = await fetch(`${apiBase}/emails/preview-offer-letter`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      })
+
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || 'Failed to generate offer letter preview')
+      }
+
+      const json = (await res.json()) as EmailPreviewResponse
+      setPreviewHtml(json.html || '')
+      setPreviewData({
+        subject: json.subject || '',
+        recipient_email: json.recipient_email || '',
+        recipient_name: json.recipient_name || '',
+      })
+      setShowPreview(true)
+    } catch (err: any) {
+      console.error('Error generating offer letter preview:', err)
+      alert('Error: ' + (err.message || 'Unknown error'))
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
   if (authLoading) {
     return (
       <DashboardLayout>
@@ -562,8 +665,7 @@ export default function ComposeEmailPage() {
                   )}
 
                   <div className="flex gap-2">
-                    {/* COMMENTED OUT: Preview button temporarily disabled */}
-                    {/* <Button
+                    <Button
                       variant="outline"
                       onClick={handlePreviewInterviewInvitation}
                       loading={interviewPreviewLoading}
@@ -572,7 +674,7 @@ export default function ComposeEmailPage() {
                     >
                       <Eye className="w-4 h-4 mr-2" />
                       Preview
-                    </Button> */}
+                    </Button>
                     <Button
                       variant="primary"
                       onClick={handleSendInterviewInvitation}
@@ -761,17 +863,16 @@ export default function ComposeEmailPage() {
                   )}
 
                   <div className="flex gap-2">
-                    {/* COMMENTED OUT: Preview button temporarily disabled */}
-                    {/* <Button
+                    <Button
                       variant="outline"
                       onClick={handlePreviewOfferLetter}
                       loading={previewLoading}
                       className="flex-1"
-                      disabled={!offerForm.candidate_id || !offerForm.job_description_id}
+                      disabled={!offerForm.candidate_id || !offerForm.job_description_id || !offerForm.offer_letter_file}
                     >
                       <Eye className="w-4 h-4 mr-2" />
                       Preview
-                    </Button> */}
+                    </Button>
                     <Button
                       variant="primary"
                       onClick={handleSendOfferLetter}
@@ -789,8 +890,7 @@ export default function ComposeEmailPage() {
           </div>
         )}
 
-        {/* Preview Modal - COMMENTED OUT: Preview functionality disabled */}
-        {/* 
+        {/* Preview Modal */}
         {showPreview && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
@@ -884,8 +984,15 @@ export default function ComposeEmailPage() {
             </div>
           </div>
         )}
-        */}
       </div>
     </DashboardLayout>
+  )
+}
+
+export default function ComposeEmailPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-[60vh]">Loading...</div>}>
+      <ComposeEmailContent />
+    </Suspense>
   )
 }

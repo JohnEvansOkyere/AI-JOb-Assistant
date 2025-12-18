@@ -184,11 +184,12 @@ export default function EmailsPage() {
             </div>
           </Card>
 
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-shadow"
+          <div 
+            className="cursor-pointer"
             onClick={() => router.push('/dashboard/calendar')}
           >
-            <div className="p-6">
+            <Card className="hover:shadow-lg transition-shadow">
+              <div className="p-6">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
                   <Calendar className="w-6 h-6 text-orange-600" />
@@ -227,7 +228,8 @@ export default function EmailsPage() {
                 View Calendar
               </Button>
             </div>
-          </Card>
+            </Card>
+          </div>
         </div>
 
         {/* Recent Emails */}

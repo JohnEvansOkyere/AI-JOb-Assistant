@@ -149,14 +149,19 @@ export default function InterviewsPage() {
       }
 
       const templateType = jobStatus === 'accepted' ? 'acceptance' : 'rejection'
-      const response = await apiClient.post('/emails/bulk-send', {
+
+      // Response from bulk-send contains e.g. { sent_count: number }
+      type BulkSendResponse = { sent_count?: number }
+
+      const response = await apiClient.post<BulkSendResponse>('/emails/bulk-send', {
         job_description_id: selectedJobId,
         job_status: jobStatus,
         template_type: templateType
       })
 
       if (response.success) {
-        alert(`Bulk email sending initiated for ${response.data?.sent_count || 0} candidates`)
+        const sentCount = (response.data && (response.data as BulkSendResponse).sent_count) || 0
+        alert(`Bulk email sending initiated for ${sentCount} candidates`)
       } else {
         alert('Failed to send bulk emails: ' + response.message)
       }

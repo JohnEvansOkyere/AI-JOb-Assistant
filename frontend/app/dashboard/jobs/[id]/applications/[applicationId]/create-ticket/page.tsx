@@ -90,7 +90,8 @@ export default function CreateTicketPage() {
       })
       
       if (response.success && response.data) {
-        setTicketCode(response.data.ticket_code || response.data.code)
+        // Backend returns ticket_code; older field name 'code' is no longer used
+        setTicketCode(response.data.ticket_code)
         setTicketId(response.data.id)
         // Check if email was sent automatically
         if (response.message?.includes('email sent')) {

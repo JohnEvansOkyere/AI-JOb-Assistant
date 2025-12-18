@@ -9,11 +9,11 @@ import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
-import { apiClient } from '@/lib/api/client'
+import { apiClient, ApiResponse } from '@/lib/api/client'
+import { EmailPreviewResponse } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
-
 import { ArrowLeft, Send, Eye, FileText, Mail, CheckCircle, X } from 'lucide-react'
 
 type EmailType = 'interview' | 'offer'
@@ -190,14 +190,14 @@ export default function ComposeEmailPage() {
       alert('Please select a candidate and job to preview')
       return
     }
-  
+
     try {
       setInterviewPreviewLoading(true)
       const token = localStorage.getItem('auth_token')
       if (token) {
         apiClient.setToken(token)
       }
-  
+
       const response: ApiResponse<EmailPreviewResponse> = await apiClient.post(
         '/emails/preview-interview-invitation',
         {
@@ -209,7 +209,7 @@ export default function ComposeEmailPage() {
           email_provider: senderInfo.email_provider || undefined,
         }
       )
-  
+
       if (response.success && response.data) {
         setInterviewPreviewHtml(response.data.html || '')
         setInterviewPreviewData({
@@ -234,14 +234,14 @@ export default function ComposeEmailPage() {
       alert('Please select a candidate and job to preview')
       return
     }
-  
+
     try {
       setPreviewLoading(true)
       const token = localStorage.getItem('auth_token')
       if (token) {
         apiClient.setToken(token)
       }
-  
+
       const response: ApiResponse<EmailPreviewResponse> = await apiClient.post(
         '/emails/preview-offer-letter',
         {
@@ -256,7 +256,7 @@ export default function ComposeEmailPage() {
           email_provider: senderInfo.email_provider || undefined,
         }
       )
-  
+
       if (response.success && response.data) {
         setPreviewHtml(response.data.html || '')
         setPreviewData({
@@ -276,8 +276,6 @@ export default function ComposeEmailPage() {
     }
   }
 
-
-  
   const handleSendOfferLetter = async () => {
     if (!offerForm.candidate_id || !offerForm.job_description_id || !offerForm.offer_letter_file) {
       alert('Please select candidate, job, and upload offer letter PDF')

@@ -36,6 +36,8 @@ from app.utils.errors import (
     AppException
 )
 from app.utils.rate_limit import limiter, rate_limit_handler
+from app.utils.security_headers import SecurityHeadersMiddleware
+from app.utils.env_validation import validate_environment, EnvironmentValidationError
 from slowapi.errors import RateLimitExceeded
 import structlog
 
@@ -65,6 +67,9 @@ app = FastAPI(
     redoc_url="/redoc" if settings.app_debug else None,
 )
 
+# Security headers middleware (must be before CORS)
+app.add_middleware(SecurityHeadersMiddleware)
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -88,6 +93,17 @@ app.state.limiter = limiter
 async def startup_event():
     """Application startup tasks"""
     logger.info("Application starting", env=settings.app_env)
+    
+    # Validate environment variables
+    try:
+        validate_environment()
+        logger.info("Environment validation passed")
+    except EnvironmentValidationError as e:
+        logger.error("Environment validation failed", error=str(e))
+        # In production, you might want to exit here
+        # For development, we'll log and continue
+        if settings.app_env == "production":
+            raise
 
 
 @app.on_event("shutdown")
@@ -96,19 +112,8 @@ async def shutdown_event():
     logger.info("Application shutting down")
 
 
-@app.get("/health")
-async def health_check():
-    """
-    Health check endpoint
-    
-    Returns:
-        Health status of the application
-    """
-    return JSONResponse({
-        "status": "healthy",
-        "version": "0.1.0",
-        "environment": settings.app_env
-    })
+# Health check is now handled by health_router
+# Keeping this for backward compatibility but it will be overridden by the router
 
 
 @app.get("/")

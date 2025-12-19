@@ -15,6 +15,8 @@ from app.services.cv_parser import CVParser
 from app.models.application_form import ApplicationFormResponseCreate
 from app.utils.auth import get_current_user_id
 from app.utils.rate_limit import rate_limit_public
+from app.utils.file_validation import validate_cv_file, sanitize_filename
+from app.utils.input_validation import validate_email_address, validate_phone_number, sanitize_text_input
 from app.config import settings
 from app.database import db
 import structlog
@@ -62,19 +64,40 @@ async def apply_for_job(
                 detail="Job not found or not active"
             )
         
+        # Validate and sanitize inputs
+        try:
+            validated_email = validate_email_address(email)
+            validated_phone = validate_phone_number(phone) if phone else None
+            sanitized_full_name = sanitize_text_input(full_name, max_length=200)
+            sanitized_cover_letter = sanitize_text_input(cover_letter, max_length=5000) if cover_letter else None
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(e)
+            )
+        
+        # Validate and sanitize file
+        safe_filename, expected_file_size, validated_mime_type = validate_cv_file(cv_file)
+        
         # Save file temporarily
         temp_dir = tempfile.gettempdir()
-        temp_file_path = os.path.join(temp_dir, f"{job_description_id}_{cv_file.filename}")
+        temp_file_path = os.path.join(temp_dir, f"{job_description_id}_{safe_filename}")
         
         async with aiofiles.open(temp_file_path, 'wb') as out_file:
             content = await cv_file.read()
             await out_file.write(content)
         
+        # Verify actual file size matches expected
         file_size = os.path.getsize(temp_file_path)
-        mime_type = cv_file.content_type or "application/octet-stream"
+        if file_size > expected_file_size and expected_file_size > 0:
+            # Re-validate with actual size
+            from app.utils.file_validation import validate_file_size, MAX_CV_FILE_SIZE
+            validate_file_size(file_size, MAX_CV_FILE_SIZE, "CV")
         
-        # Upload to Supabase Storage
-        storage_path = f"applications/{job_description_id}/{cv_file.filename}"
+        mime_type = validated_mime_type
+        
+        # Upload to Supabase Storage (use sanitized filename)
+        storage_path = f"applications/{job_description_id}/{safe_filename}"
         bucket_name = getattr(settings, 'supabase_storage_bucket_cvs', 'cvs')
         
         try:
@@ -119,18 +142,18 @@ async def apply_for_job(
         # Clean up temp file
         os.remove(temp_file_path)
         
-        # Create application
+        # Create application (use validated inputs)
         application_data = JobApplicationCreate(
             job_description_id=job_description_id,
-            email=email,
-            full_name=full_name,
-            phone=phone,
-            cover_letter=cover_letter
+            email=validated_email,
+            full_name=sanitized_full_name,
+            phone=validated_phone,
+            cover_letter=sanitized_cover_letter
         )
         
         application = await ApplicationService.create_application(
             application_data=application_data,
-            cv_file_name=cv_file.filename,
+            cv_file_name=safe_filename,
             cv_file_path=storage_path,
             cv_file_size=file_size,
             cv_mime_type=mime_type,

@@ -11,6 +11,7 @@ from app.models.cv import CV
 from app.services.cv_service import CVService
 from app.services.cv_parser import CVParser
 from app.utils.auth import get_current_user_id
+from app.utils.file_validation import validate_cv_file, sanitize_filename
 from app.config import settings
 from app.database import db
 import structlog
@@ -52,19 +53,27 @@ async def upload_cv(
                     detail="Job description not found"
                 )
         
+        # Validate and sanitize file
+        safe_filename, expected_file_size, validated_mime_type = validate_cv_file(file)
+        
         # Save file to temporary location
         temp_dir = tempfile.gettempdir()
-        temp_file_path = os.path.join(temp_dir, f"{candidate_id}_{file.filename}")
+        temp_file_path = os.path.join(temp_dir, f"{candidate_id}_{safe_filename}")
         
         async with aiofiles.open(temp_file_path, 'wb') as out_file:
             content = await file.read()
             await out_file.write(content)
         
+        # Verify actual file size
         file_size = os.path.getsize(temp_file_path)
-        mime_type = file.content_type or "application/octet-stream"
+        if file_size > expected_file_size and expected_file_size > 0:
+            from app.utils.file_validation import validate_file_size, MAX_CV_FILE_SIZE
+            validate_file_size(file_size, MAX_CV_FILE_SIZE, "CV")
         
-        # Upload to Supabase Storage
-        storage_path = f"{candidate_id}/{file.filename}"
+        mime_type = validated_mime_type
+        
+        # Upload to Supabase Storage (use sanitized filename)
+        storage_path = f"{candidate_id}/{safe_filename}"
         bucket_name = settings.supabase_storage_bucket_cvs
         
         try:
@@ -113,7 +122,7 @@ async def upload_cv(
         # Create CV record
         cv = await CVService.upload_cv(
             candidate_id=candidate_id,
-            file_name=file.filename,
+            file_name=safe_filename,
             file_path=storage_path,
             file_size=file_size,
             mime_type=mime_type,

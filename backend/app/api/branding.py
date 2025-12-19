@@ -8,6 +8,7 @@ from typing import Optional
 from uuid import UUID
 from app.schemas.common import Response
 from app.utils.auth import get_current_user_id
+from app.utils.file_validation import validate_image_file, sanitize_filename
 from app.database import db
 from app.config import settings
 import structlog
@@ -67,18 +68,27 @@ async def create_branding(
         # Upload logo if provided
         logo_url = None
         if logo_file:
+            # Validate and sanitize image file
+            safe_filename, file_size, validated_mime_type = validate_image_file(logo_file)
+            
             # Save to Supabase Storage
             bucket_name = "branding"  # Create this bucket in Supabase
-            file_path = f"{recruiter_id}/{logo_file.filename}"
+            file_path = f"{recruiter_id}/{safe_filename}"
             
             # Read file
             content = await logo_file.read()
+            
+            # Verify file size
+            actual_size = len(content)
+            if actual_size > file_size and file_size > 0:
+                from app.utils.file_validation import validate_file_size, MAX_LOGO_FILE_SIZE
+                validate_file_size(actual_size, MAX_LOGO_FILE_SIZE, "Image")
             
             # Upload to Supabase Storage
             db.service_client.storage.from_(bucket_name).upload(
                 file_path,
                 content,
-                file_options={"content-type": logo_file.content_type or "image/png"}
+                file_options={"content-type": validated_mime_type}
             )
             
             # Get public URL
@@ -213,13 +223,23 @@ async def update_branding(
         # Upload logo if provided
         logo_url = None
         if logo_file:
+            # Validate and sanitize image file
+            safe_filename, file_size, validated_mime_type = validate_image_file(logo_file)
+            
             bucket_name = "branding"
-            file_path = f"{recruiter_id}/{logo_file.filename}"
+            file_path = f"{recruiter_id}/{safe_filename}"
             content = await logo_file.read()
+            
+            # Verify file size
+            actual_size = len(content)
+            if actual_size > file_size and file_size > 0:
+                from app.utils.file_validation import validate_file_size, MAX_LOGO_FILE_SIZE
+                validate_file_size(actual_size, MAX_LOGO_FILE_SIZE, "Image")
+            
             db.service_client.storage.from_(bucket_name).upload(
                 file_path,
                 content,
-                file_options={"content-type": logo_file.content_type or "image/png"}
+                file_options={"content-type": validated_mime_type}
             )
             logo_url = db.service_client.storage.from_(bucket_name).get_public_url(file_path)
         

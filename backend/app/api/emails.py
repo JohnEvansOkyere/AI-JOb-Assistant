@@ -15,6 +15,7 @@ from app.config import settings
 from app.database import db
 import structlog
 import base64
+import os
 
 logger = structlog.get_logger()
 
@@ -449,25 +450,35 @@ async def send_offer_letter(
         candidate = candidate_response.data[0]
         job = job_response.data[0]
         
+        # Validate and sanitize PDF file
+        from app.utils.file_validation import validate_pdf_file, sanitize_filename
+        safe_filename, expected_file_size, validated_mime_type = validate_pdf_file(offer_letter_file)
+        
         # Upload offer letter to Supabase Storage
         bucket_name = "offer-letters"  # Create this bucket in Supabase
         import time
         import uuid
         
-        # Make filename unique to avoid conflicts
+        # Make filename unique to avoid conflicts (use sanitized filename)
         timestamp = int(time.time())
         unique_id = str(uuid.uuid4())[:8]
-        file_extension = offer_letter_file.filename.split('.')[-1] if '.' in offer_letter_file.filename else 'pdf'
-        unique_filename = f"offer_letter_{timestamp}_{unique_id}.{file_extension}"
+        name, ext = os.path.splitext(safe_filename)
+        unique_filename = f"offer_letter_{timestamp}_{unique_id}{ext}"
         file_path = f"{job_description_id}/{candidate_id}/{unique_filename}"
         
         content = await offer_letter_file.read()
+        
+        # Verify file size
+        actual_size = len(content)
+        if actual_size > expected_file_size and expected_file_size > 0:
+            from app.utils.file_validation import validate_file_size, MAX_OFFER_LETTER_SIZE
+            validate_file_size(actual_size, MAX_OFFER_LETTER_SIZE, "PDF")
         
         try:
             db.service_client.storage.from_(bucket_name).upload(
                 file_path,
                 content,
-                file_options={"content-type": "application/pdf"}
+                file_options={"content-type": validated_mime_type}
             )
         except Exception as e:
             error_str = str(e).lower()

@@ -15,13 +15,13 @@ interface CardProps {
 
 export function Card({ children, className, title, footer }: CardProps) {
   return (
-    <div className={clsx('bg-white rounded-lg shadow-md p-6', className)}>
+    <div className={clsx('bg-white dark:bg-gray-800 rounded-lg shadow-md dark:shadow-lg p-6 border border-gray-200 dark:border-gray-700', className)}>
       {title && (
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">{title}</h3>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">{title}</h3>
       )}
-      <div>{children}</div>
+      <div className="text-gray-700 dark:text-gray-300">{children}</div>
       {footer && (
-        <div className="mt-4 pt-4 border-t border-gray-200">{footer}</div>
+        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">{footer}</div>
       )}
     </div>
   )

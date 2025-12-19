@@ -9,6 +9,7 @@ import { ReactNode, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/Button'
+import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { clsx } from 'clsx'
 
 interface DashboardLayoutProps {
@@ -125,24 +126,27 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Mobile menu button */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-900">AI Interview Platform</h1>
-        <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3 flex items-center justify-between">
+        <h1 className="text-xl font-bold text-gray-900 dark:text-white">AI Interview Platform</h1>
+        <div className="flex items-center gap-2">
+          <ThemeToggle variant="icon" />
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="p-2 rounded-md text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Sidebar */}
       <aside
         className={clsx(
-          'fixed top-0 left-0 z-40 h-screen transition-transform duration-300 ease-in-out bg-white border-r border-gray-200',
+          'fixed top-0 left-0 z-40 h-screen transition-transform duration-300 ease-in-out bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700',
           'lg:translate-x-0',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full',
           'w-64 pt-16 lg:pt-0'
@@ -150,9 +154,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       >
         <div className="h-full flex flex-col">
           {/* Logo/Brand */}
-          <div className="px-6 py-4 border-b border-gray-200 hidden lg:block">
-            <h1 className="text-xl font-bold text-gray-900">AI Interview Platform</h1>
-            <p className="text-xs text-gray-500 mt-1">Recruiter Dashboard</p>
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 hidden lg:block">
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white">AI Interview Platform</h1>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Recruiter Dashboard</p>
           </div>
 
           {/* Navigation */}
@@ -167,8 +171,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 className={clsx(
                   'w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors',
                   isActive(item.href)
-                    ? 'bg-primary-50 text-primary-700'
-                    : 'text-gray-700 hover:bg-gray-100'
+                    ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                 )}
               >
                 {item.icon}
@@ -183,28 +187,31 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           </nav>
 
           {/* User section */}
-          <div className="px-4 py-4 border-t border-gray-200">
+          <div className="px-4 py-4 border-t border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center">
-                <span className="text-primary-700 font-semibold">
+              <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
+                <span className="text-primary-700 dark:text-primary-400 font-semibold">
                   {user?.full_name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}
                 </span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">
+                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
                   {user?.full_name || 'User'}
                 </p>
-                <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user?.email}</p>
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleLogout}
-              className="w-full"
-            >
-              Logout
-            </Button>
+            <div className="space-y-2">
+              <ThemeToggle variant="button" className="w-full" />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleLogout}
+                className="w-full"
+              >
+                Logout
+              </Button>
+            </div>
           </div>
         </div>
       </aside>
@@ -212,7 +219,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       {/* Overlay for mobile */}
       {sidebarOpen && (
         <div
-          className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-30"
+          className="lg:hidden fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-70 z-30"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -220,15 +227,16 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       {/* Main content */}
       <div className="lg:pl-64">
         {/* Top bar */}
-        <header className="sticky top-0 z-30 bg-white border-b border-gray-200 lg:block hidden">
+        <header className="sticky top-0 z-30 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 lg:block hidden">
           <div className="px-6 py-4 flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                 {navigation.find((item) => isActive(item.href))?.name || 'Dashboard'}
               </h2>
             </div>
             <div className="flex items-center gap-4">
-              <button className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+              <ThemeToggle variant="icon" />
+              <button className="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                 </svg>
@@ -238,7 +246,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         </header>
 
         {/* Page content */}
-        <main className="p-4 lg:p-8">{children}</main>
+        <main className="p-4 lg:p-8 bg-gray-50 dark:bg-gray-900 min-h-screen">{children}</main>
       </div>
     </div>
   )

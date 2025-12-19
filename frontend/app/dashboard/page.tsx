@@ -91,8 +91,8 @@ export default function DashboardPage() {
       <div className="space-y-6">
         {/* Welcome Section */}
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Welcome back!</h1>
-          <p className="text-gray-600 mt-2">Here's what's happening with your recruitment pipeline.</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Welcome back!</h1>
+          <p className="text-gray-600 dark:text-gray-400 mt-2">Here's what's happening with your recruitment pipeline.</p>
         </div>
 
         {/* Statistics Grid */}

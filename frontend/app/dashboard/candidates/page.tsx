@@ -93,11 +93,11 @@ export default function CandidatesPage() {
 
   const getStatusBadge = (status: string) => {
     const statusConfig = {
-      pending: { label: 'Pending', className: 'bg-yellow-100 text-yellow-800', icon: Clock },
-      qualified: { label: 'Qualified', className: 'bg-green-100 text-green-800', icon: CheckCircle },
-      screening: { label: 'Screening', className: 'bg-blue-100 text-blue-800', icon: Clock },
-      rejected: { label: 'Rejected', className: 'bg-red-100 text-red-800', icon: XCircle },
-      interview_scheduled: { label: 'Interview Scheduled', className: 'bg-purple-100 text-purple-800', icon: Calendar },
+      pending: { label: 'Pending', className: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300', icon: Clock },
+      qualified: { label: 'Qualified', className: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300', icon: CheckCircle },
+      screening: { label: 'Screening', className: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300', icon: Clock },
+      rejected: { label: 'Rejected', className: 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300', icon: XCircle },
+      interview_scheduled: { label: 'Interview Scheduled', className: 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300', icon: Calendar },
     }
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pending
     const Icon = config.icon
@@ -115,7 +115,7 @@ export default function CandidatesPage() {
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading candidates...</p>
+            <p className="mt-4 text-gray-600 dark:text-gray-400">Loading candidates...</p>
           </div>
         </div>
       </DashboardLayout>
@@ -131,8 +131,8 @@ export default function CandidatesPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Candidates</h1>
-            <p className="text-gray-600 mt-1">View and manage all candidates</p>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Candidates</h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-1">View and manage all candidates</p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={loadCandidates} disabled={loading}>
@@ -145,13 +145,13 @@ export default function CandidatesPage() {
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded">
             {error}
           </div>
         )}
 
         {/* Search */}
-        <div className="bg-white rounded-lg shadow-md p-4">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md dark:shadow-lg p-4 border border-gray-200 dark:border-gray-700">
           <Input
             type="text"
             placeholder="Search by name, email, or job title..."
@@ -163,8 +163,8 @@ export default function CandidatesPage() {
         {filteredCandidates.length === 0 ? (
           <Card>
             <div className="text-center py-12">
-              <User className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600 mb-4">
+              <User className="h-16 w-16 text-gray-400 dark:text-gray-500 mx-auto mb-4" />
+              <p className="text-gray-600 dark:text-gray-400 mb-4">
                 {searchTerm ? 'No candidates match your search.' : 'No candidates yet.'}
               </p>
               {!searchTerm && (
@@ -181,17 +181,17 @@ export default function CandidatesPage() {
                 <div className="space-y-4">
                   <div className="flex items-start justify-between">
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                        <User className="h-5 w-5 text-gray-400" />
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                        <User className="h-5 w-5 text-gray-400 dark:text-gray-500" />
                         {candidate.full_name || 'Unknown'}
                       </h3>
                       <div className="mt-2 space-y-1">
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                           <Mail className="h-4 w-4" />
                           {candidate.email}
                         </div>
                         {candidate.phone && (
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                             <Phone className="h-4 w-4" />
                             {candidate.phone}
                           </div>
@@ -201,39 +201,39 @@ export default function CandidatesPage() {
                   </div>
 
                   {candidate.latest_application && (
-                    <div className="border-t pt-4 space-y-2">
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-2">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                           <Briefcase className="h-4 w-4" />
                           <span className="font-medium">Latest Application</span>
                         </div>
                         {getStatusBadge(candidate.latest_application.status)}
                       </div>
-                      <p className="text-sm font-medium text-gray-900">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">
                         {candidate.latest_application.job_title}
                       </p>
                       {candidate.latest_application.screening_result && (
                         <div className="flex items-center gap-2 text-sm">
-                          <span className="text-gray-600">Match Score:</span>
+                          <span className="text-gray-600 dark:text-gray-400">Match Score:</span>
                           <span className={`font-semibold ${
                             candidate.latest_application.screening_result.match_score >= 70
-                              ? 'text-green-600'
+                              ? 'text-green-600 dark:text-green-400'
                               : candidate.latest_application.screening_result.match_score >= 50
-                              ? 'text-yellow-600'
-                              : 'text-red-600'
+                              ? 'text-yellow-600 dark:text-yellow-400'
+                              : 'text-red-600 dark:text-red-400'
                           }`}>
                             {candidate.latest_application.screening_result.match_score}%
                           </span>
                         </div>
                       )}
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
                         Applied {new Date(candidate.latest_application.applied_at).toLocaleDateString()}
                       </p>
                     </div>
                   )}
 
-                  <div className="border-t pt-4 flex items-center justify-between">
-                    <span className="text-sm text-gray-600">
+                  <div className="border-t border-gray-200 dark:border-gray-700 pt-4 flex items-center justify-between">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">
                       {candidate.total_applications} application{candidate.total_applications !== 1 ? 's' : ''}
                     </span>
                     <Button

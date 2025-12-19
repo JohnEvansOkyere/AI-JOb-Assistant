@@ -105,8 +105,8 @@ export default function JobsPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Job Descriptions</h1>
-            <p className="text-gray-600 mt-1">Create and manage your job postings</p>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Job Descriptions</h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-1">Create and manage your job postings</p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={handleRefresh} disabled={loading}>
@@ -130,7 +130,7 @@ export default function JobsPage() {
         {jobs.length === 0 ? (
           <Card>
             <div className="text-center py-12">
-              <p className="text-gray-600 mb-4">No job descriptions yet.</p>
+              <p className="text-gray-600 dark:text-gray-400 mb-4">No job descriptions yet.</p>
               <Button variant="primary" onClick={() => router.push('/dashboard/jobs/new')}>
                 Create Your First Job Description
               </Button>
@@ -141,19 +141,19 @@ export default function JobsPage() {
             {jobs.map((job) => (
               <Card key={job.id} title={job.title}>
                 <div className="space-y-2">
-                  <p className="text-sm text-gray-600 line-clamp-3">{job.description}</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-3">{job.description}</p>
                   {job.location && (
-                    <p className="text-sm text-gray-500">📍 {job.location}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">📍 {job.location}</p>
                   )}
                   {job.experience_level && (
-                    <p className="text-sm text-gray-500">Level: {job.experience_level}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Level: {job.experience_level}</p>
                   )}
                   <div className="space-y-2 pt-2">
                     <div className="flex items-center justify-between">
                       <span className={`text-xs px-2 py-1 rounded ${
                         job.is_active 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-gray-100 text-gray-800'
+                          ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' 
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
                       }`}>
                         {job.is_active ? 'Active' : 'Inactive'}
                       </span>

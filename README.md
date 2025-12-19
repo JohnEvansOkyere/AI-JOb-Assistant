@@ -102,47 +102,6 @@ AI-JOb-Assistant/
     - ⏳ Enhanced access control
     - ⏳ Performance optimization
 
-## Getting Started
-
-
-## Features
-
-### Core Features
-- Real-time voice interviews (planned)
-- AI-powered question generation
-- Multi-modal AI support (OpenAI, Groq, Gemini)
-- Cost-optimized token tracking
-- Structured interview reports (planned)
-
-### Application Management
-- Public job application form (no authentication required)
-- AI-powered CV screening and matching
-- Batch application screening
-- Match scoring (0-100) with detailed breakdowns
-- Application status tracking
-- Interview ticket generation from qualified candidates
-
-### Email & Communication
-- Custom email composer with company branding
-- Company letterhead/logo management
-- Automatic interview ticket email delivery
-- Email templates and history tracking
-- Calendar event management for interviews
-- Google Calendar integration (in progress)
-
-### Comprehensive CV Screening (Resume Worded Style)
-- **Multi-category scoring**: 9 categories with 20+ criteria
-- **Experience analysis**: Action verbs, quantification, accomplishments
-- **Skills matching**: Technical/soft skills with job requirement comparison
-- **ATS compatibility**: Parsability and keyword optimization
-- **Format analysis**: Consistency, template, fonts, page length
-- **Structure analysis**: Section organization, contact info
-- **Language analysis**: Grammar, tense, pronouns, filler words
-- **Impact analysis**: Brevity, clarity, professionalism
-- **Visual dashboard**: Animated score bars and circles
-- **Strengths & issues**: Actionable improvement suggestions
-
-
+#
 ## Environment Variables
 
-See `.env.example` files in backend/ and frontend/ directories.

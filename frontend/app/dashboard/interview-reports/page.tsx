@@ -157,6 +157,36 @@ export default function InterviewReportsPage() {
     return true
   })
 
+  const exportToCSV = () => {
+    const headers = ['Candidate Name', 'Email', 'Job Title', 'Overall Score', 'Technical Score', 'Soft Skills Score', 'Communication Score', 'Recommendation', 'Completed At']
+    const rows = filteredReports.map(report => [
+      report.candidate_name || '',
+      report.candidate_email || '',
+      report.job_title || '',
+      report.overall_score?.toString() || '',
+      report.technical_score?.toString() || '',
+      report.soft_skills_score?.toString() || '',
+      report.communication_score?.toString() || '',
+      report.recommendation || '',
+      report.completed_at || '',
+    ])
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `interview-reports-${new Date().toISOString().split('T')[0]}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+  }
+
   const stats = {
     total: reports.length,
     analyzed: reports.filter(r => r.has_analysis).length,

@@ -5,6 +5,7 @@
 
 'use client'
 
+import { useState, useEffect } from 'react'
 import { Moon, Sun } from 'lucide-react'
 import { useTheme } from '@/hooks/useTheme'
 import { Button } from './Button'
@@ -15,6 +16,25 @@ interface ThemeToggleProps {
 }
 
 export function ThemeToggle({ variant = 'icon', className = '' }: ThemeToggleProps) {
+  const [mounted, setMounted] = useState(false)
+  
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  // During SSR, return a placeholder to avoid hydration mismatch
+  if (!mounted) {
+    return (
+      <button
+        className={`p-2 rounded-lg ${className}`}
+        aria-label="Theme toggle"
+        disabled
+      >
+        <Moon className="w-5 h-5 text-gray-400" />
+      </button>
+    )
+  }
+
   const { theme, toggleTheme } = useTheme()
 
   if (variant === 'icon') {

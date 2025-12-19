@@ -5,6 +5,9 @@
 
 'use client'
 
+// Disable static prerendering to avoid SSR issues with theme
+export const dynamic = 'force-dynamic'
+
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'

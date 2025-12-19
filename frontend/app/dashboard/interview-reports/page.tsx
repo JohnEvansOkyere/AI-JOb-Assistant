@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiClient } from '@/lib/api/client'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
@@ -157,7 +157,7 @@ export default function InterviewReportsPage() {
     return true
   })
 
-  const exportToCSV = () => {
+  const exportToCSV = useCallback(() => {
     const headers = ['Candidate Name', 'Email', 'Job Title', 'Overall Score', 'Technical Score', 'Soft Skills Score', 'Communication Score', 'Recommendation', 'Completed At']
     const rows = filteredReports.map(report => [
       report.candidate_name || '',
@@ -185,7 +185,7 @@ export default function InterviewReportsPage() {
     a.click()
     document.body.removeChild(a)
     window.URL.revokeObjectURL(url)
-  }
+  }, [filteredReports])
 
   const stats = {
     total: reports.length,

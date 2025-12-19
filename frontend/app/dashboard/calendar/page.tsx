@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Calendar, Plus, Clock, MapPin, Video, X } from 'lucide-react'
+import { CalendarView } from '@/components/ui/CalendarView'
 
 export default function CalendarPage() {
   const router = useRouter()
@@ -220,8 +221,8 @@ export default function CalendarPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Calendar</h1>
-            <p className="text-gray-600 mt-1">Manage interview bookings and events</p>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Calendar</h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-1">Manage interview bookings and events</p>
           </div>
           <Button
             variant="primary"
@@ -232,113 +233,35 @@ export default function CalendarPage() {
           </Button>
         </div>
 
-        <Card>
-          <div className="p-6">
-            {events.length === 0 ? (
-              <div className="text-center py-12">
-                <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600 mb-4">No calendar events yet</p>
-                <Button
-                  variant="primary"
-                  onClick={() => setShowCreateModal(true)}
-                >
-                  Create Your First Event
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {events.map((event) => (
-                  <div
-                    key={event.id}
-                    className="border border-gray-200 rounded-lg p-6 hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="text-lg font-semibold text-gray-900">
-                            {event.title}
-                          </h3>
-                          <span
-                            className={`text-xs px-2 py-1 rounded ${
-                              event.status === 'scheduled'
-                                ? 'bg-blue-100 text-blue-800'
-                                : event.status === 'confirmed'
-                                ? 'bg-green-100 text-green-800'
-                                : event.status === 'cancelled'
-                                ? 'bg-red-100 text-red-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}
-                          >
-                            {event.status}
-                          </span>
-                        </div>
-                        {event.description && (
-                          <p className="text-gray-600 mb-4">{event.description}</p>
-                        )}
-                        <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-                          <div className="flex items-center gap-2">
-                            <Clock className="w-4 h-4" />
-                            <span>
-                              {new Date(event.start_time).toLocaleString()} -{' '}
-                              {new Date(event.end_time).toLocaleTimeString()}
-                            </span>
-                          </div>
-                          {event.location && (
-                            <div className="flex items-center gap-2">
-                              {event.is_virtual ? (
-                                <Video className="w-4 h-4" />
-                              ) : (
-                                <MapPin className="w-4 h-4" />
-                              )}
-                              <span>{event.location}</span>
-                            </div>
-                          )}
-                          {event.video_link && (
-                            <a
-                              href={event.video_link}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-primary-600 hover:text-primary-700"
-                            >
-                              Join Meeting
-                            </a>
-                          )}
-                        </div>
-                        {event.attendee_emails && event.attendee_emails.length > 0 && (
-                          <div className="mt-4 pt-4 border-t border-gray-200">
-                            <p className="text-sm font-medium text-gray-700 mb-2">Attendees:</p>
-                            <div className="flex flex-wrap gap-2">
-                              {event.attendee_emails.map((email: string, idx: number) => (
-                                <span
-                                  key={idx}
-                                  className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded"
-                                >
-                                  {email}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </Card>
+        {/* Enhanced Calendar View */}
+        <CalendarView
+          events={events}
+          onEventClick={(event) => {
+            // Could open event details modal here
+            console.log('Event clicked:', event)
+          }}
+          onDateClick={(date) => {
+            // Could pre-fill create modal with selected date
+            setFormData(prev => ({
+              ...prev,
+              start_time: date.toISOString().slice(0, 16),
+              end_time: new Date(date.getTime() + 60 * 60 * 1000).toISOString().slice(0, 16),
+            }))
+            setShowCreateModal(true)
+          }}
+        />
       </div>
 
       {/* Create Event Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-70 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-6 border-b sticky top-0 bg-white z-10">
-              <h2 className="text-xl font-bold text-gray-900">Create Calendar Event</h2>
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 z-10">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Create Calendar Event</h2>
               <button
                 onClick={() => setShowCreateModal(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded hover:bg-gray-100"
+                className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -348,13 +271,13 @@ export default function CalendarPage() {
             <div className="p-6 space-y-6">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Candidate * <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={formData.candidate_id}
                     onChange={(e) => setFormData({ ...formData, candidate_id: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     required
                   >
                     <option value="">Select candidate...</option>
@@ -367,13 +290,13 @@ export default function CalendarPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Job Position (Optional)
                   </label>
                   <select
                     value={formData.job_description_id}
                     onChange={(e) => setFormData({ ...formData, job_description_id: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                   >
                     <option value="">Select job...</option>
                     {jobs.map((job) => (
@@ -386,7 +309,7 @@ export default function CalendarPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Event Title * <span className="text-red-500">*</span>
                 </label>
                 <Input
@@ -399,41 +322,41 @@ export default function CalendarPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Start Time * <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="datetime-local"
                     value={formData.start_time}
                     onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     End Time * <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="datetime-local"
                     value={formData.end_time}
                     onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     required
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Description
                 </label>
                 <textarea
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   rows={3}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
                   placeholder="Event description or notes..."
                 />
               </div>
@@ -444,15 +367,15 @@ export default function CalendarPage() {
                     type="checkbox"
                     checked={formData.is_virtual}
                     onChange={(e) => setFormData({ ...formData, is_virtual: e.target.checked })}
-                    className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                    className="w-4 h-4 text-primary-600 border-gray-300 dark:border-gray-600 rounded focus:ring-primary-500 bg-white dark:bg-gray-700"
                   />
-                  <span className="text-sm font-medium text-gray-700">Virtual Event</span>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Virtual Event</span>
                 </label>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     {formData.is_virtual ? 'Video Link (Zoom, Google Meet, etc.)' : 'Location'}
                   </label>
                   <Input
@@ -466,23 +389,23 @@ export default function CalendarPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Timezone
                   </label>
                   <input
                     type="text"
                     value={formData.timezone}
                     onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
                     readOnly
                   />
-                  <p className="mt-1 text-xs text-gray-500">Auto-detected from your browser</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Auto-detected from your browser</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Attendee Emails (comma-separated)
                   </label>
                   <Input
@@ -493,7 +416,7 @@ export default function CalendarPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Attendee Names (comma-separated)
                   </label>
                   <Input
@@ -506,7 +429,7 @@ export default function CalendarPage() {
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-end gap-3 p-6 border-t bg-gray-50 sticky bottom-0">
+            <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 sticky bottom-0">
               <Button
                 variant="outline"
                 onClick={() => setShowCreateModal(false)}

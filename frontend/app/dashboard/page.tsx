@@ -12,7 +12,9 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { StatCard } from '@/components/ui/StatCard'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import { BarChart, PieChart } from '@/components/ui/SimpleChart'
 import { apiClient } from '@/lib/api/client'
+import { LoadingState } from '@/components/ui/LoadingState'
 
 interface DashboardStats {
   total_jobs: number
@@ -73,10 +75,7 @@ export default function DashboardPage() {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading dashboard...</p>
-          </div>
+          <LoadingState message="Loading dashboard..." size="lg" />
         </div>
       </DashboardLayout>
     )
@@ -198,12 +197,12 @@ export default function DashboardPage() {
           <Card title="Pipeline Overview">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Pending Applications</span>
-                <span className="text-lg font-semibold text-gray-900">{stats?.pending_applications || 0}</span>
+                <span className="text-sm text-gray-600 dark:text-gray-400">Pending Applications</span>
+                <span className="text-lg font-semibold text-gray-900 dark:text-white">{stats?.pending_applications || 0}</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                 <div
-                  className="bg-yellow-500 h-2 rounded-full transition-all"
+                  className="bg-yellow-500 dark:bg-yellow-400 h-2 rounded-full transition-all"
                   style={{
                     width: stats?.total_applications
                       ? `${((stats.pending_applications || 0) / stats.total_applications) * 100}%`
@@ -213,12 +212,12 @@ export default function DashboardPage() {
               </div>
               
               <div className="flex items-center justify-between pt-2">
-                <span className="text-sm text-gray-600">Qualified Candidates</span>
-                <span className="text-lg font-semibold text-green-600">{stats?.qualified_candidates || 0}</span>
+                <span className="text-sm text-gray-600 dark:text-gray-400">Qualified Candidates</span>
+                <span className="text-lg font-semibold text-green-600 dark:text-green-400">{stats?.qualified_candidates || 0}</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                 <div
-                  className="bg-green-500 h-2 rounded-full transition-all"
+                  className="bg-green-500 dark:bg-green-400 h-2 rounded-full transition-all"
                   style={{
                     width: stats?.total_applications
                       ? `${((stats.qualified_candidates || 0) / stats.total_applications) * 100}%`
@@ -228,12 +227,12 @@ export default function DashboardPage() {
               </div>
               
               <div className="flex items-center justify-between pt-2">
-                <span className="text-sm text-gray-600">Completed Interviews</span>
-                <span className="text-lg font-semibold text-primary-600">{stats?.completed_interviews || 0}</span>
+                <span className="text-sm text-gray-600 dark:text-gray-400">Completed Interviews</span>
+                <span className="text-lg font-semibold text-primary-600 dark:text-primary-400">{stats?.completed_interviews || 0}</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                 <div
-                  className="bg-primary-500 h-2 rounded-full transition-all"
+                  className="bg-primary-500 dark:bg-primary-400 h-2 rounded-full transition-all"
                   style={{
                     width: stats?.total_interviews
                       ? `${((stats.completed_interviews || 0) / stats.total_interviews) * 100}%`
@@ -242,6 +241,51 @@ export default function DashboardPage() {
                 />
               </div>
             </div>
+          </Card>
+        </div>
+
+        {/* Analytics Charts */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Application Status Distribution */}
+          <Card title="Application Status Distribution">
+            <PieChart
+              data={[
+                {
+                  label: 'Pending',
+                  value: stats?.pending_applications || 0,
+                  color: '#f59e0b',
+                },
+                {
+                  label: 'Qualified',
+                  value: stats?.qualified_candidates || 0,
+                  color: '#10b981',
+                },
+                {
+                  label: 'Other',
+                  value: Math.max(0, (stats?.total_applications || 0) - (stats?.pending_applications || 0) - (stats?.qualified_candidates || 0)),
+                  color: '#6b7280',
+                },
+              ].filter(item => item.value > 0)}
+            />
+          </Card>
+
+          {/* Job Statistics */}
+          <Card title="Job Statistics">
+            <BarChart
+              data={[
+                {
+                  label: 'Total',
+                  value: stats?.total_jobs || 0,
+                  color: '#0ea5e9',
+                },
+                {
+                  label: 'Active',
+                  value: stats?.active_jobs || 0,
+                  color: '#10b981',
+                },
+              ]}
+              height={150}
+            />
           </Card>
         </div>
 

@@ -287,6 +287,7 @@ async def voice_interview(
                     )
 
                 response_quality = analysis.get("quality") or analysis.get("response_quality", "adequate")
+                non_answer_type = analysis.get("non_answer_type")  # Extract non-answer type if detected
                 try:
                     followup = await asyncio.wait_for(
                         interview_ai.generate_followup_question(
@@ -296,6 +297,7 @@ async def voice_interview(
                             UUID(question_id),
                             response_quality,
                             answer_text,  # Pass the candidate's response text
+                            non_answer_type  # Pass non-answer type if detected
                         ),
                         timeout=45.0  # 45 second timeout for follow-up question generation
                     )

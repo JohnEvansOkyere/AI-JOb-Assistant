@@ -172,7 +172,8 @@ class InterviewAIService:
         cv_text: str,
         previous_question_id: UUID,
         response_quality: str,
-        previous_response_text: str = ""
+        previous_response_text: str = "",
+        non_answer_type: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Generate follow-up question based on previous response
@@ -228,7 +229,8 @@ class InterviewAIService:
                         previous_questions,
                         previous_question_text,
                         previous_response_text,
-                        response_quality
+                        response_quality,
+                        non_answer_type
                     )
                 else:
                     question_text = await self.question_generator.generate_experience_question_with_acknowledgment(
@@ -237,7 +239,8 @@ class InterviewAIService:
                         previous_questions,
                         previous_question_text,
                         previous_response_text,
-                        response_quality
+                        response_quality,
+                        non_answer_type
                     )
             
             # Get next order index

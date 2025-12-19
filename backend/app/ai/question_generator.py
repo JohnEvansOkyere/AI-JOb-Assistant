@@ -243,7 +243,8 @@ class QuestionGenerator:
         previous_questions: Optional[List[str]],
         previous_question_text: str,
         previous_response_text: str,
-        response_quality: str
+        response_quality: str,
+        non_answer_type: Optional[str] = None
     ) -> str:
         """
         Generate skill question that acknowledges the candidate's previous response
@@ -256,6 +257,7 @@ class QuestionGenerator:
             previous_question_text: The previous question that was asked
             previous_response_text: The candidate's response to the previous question
             response_quality: Quality of previous response
+            non_answer_type: Type of non-answer if detected ("not_ready", "confused", "decline", "need_help")
         
         Returns:
             Generated question text with acknowledgment
@@ -268,7 +270,8 @@ class QuestionGenerator:
                 previous_questions or [],
                 previous_question_text,
                 previous_response_text,
-                response_quality
+                response_quality,
+                non_answer_type
             )
             question = await self.provider.generate_completion(
                 prompt=prompt,
@@ -289,7 +292,8 @@ class QuestionGenerator:
         previous_questions: Optional[List[str]],
         previous_question_text: str,
         previous_response_text: str,
-        response_quality: str
+        response_quality: str,
+        non_answer_type: Optional[str] = None
     ) -> str:
         """
         Generate experience question that acknowledges the candidate's previous response
@@ -301,6 +305,7 @@ class QuestionGenerator:
             previous_question_text: The previous question that was asked
             previous_response_text: The candidate's response to the previous question
             response_quality: Quality of previous response
+            non_answer_type: Type of non-answer if detected ("not_ready", "confused", "decline", "need_help")
         
         Returns:
             Generated question text with acknowledgment
@@ -312,7 +317,8 @@ class QuestionGenerator:
                 previous_questions or [],
                 previous_question_text,
                 previous_response_text,
-                response_quality
+                response_quality,
+                non_answer_type
             )
             question = await self.provider.generate_completion(
                 prompt=prompt,

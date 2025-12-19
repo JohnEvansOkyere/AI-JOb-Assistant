@@ -3,7 +3,7 @@
  * Reusable input component
  */
 
-import React, { useState } from 'react'
+import React, { useState, forwardRef } from 'react'
 import { clsx } from 'clsx'
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -12,14 +12,14 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   helperText?: string
 }
 
-export function Input({
+export const Input = forwardRef<HTMLInputElement, InputProps>(({
   label,
   error,
   helperText,
   className,
   id,
   ...props
-}: InputProps) {
+}, ref) => {
   const [inputId] = useState(() => id || `input-${Math.random().toString(36).substr(2, 9)}`)
 
   return (
@@ -30,6 +30,7 @@ export function Input({
         </label>
       )}
       <input
+        ref={ref}
         id={inputId}
         className={clsx(
           'w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent',
@@ -47,5 +48,7 @@ export function Input({
       )}
     </div>
   )
-}
+})
+
+Input.displayName = 'Input'
 

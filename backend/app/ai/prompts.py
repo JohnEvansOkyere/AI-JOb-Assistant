@@ -3,7 +3,7 @@ Interview Prompt Templates
 Templates for generating interview questions and analyzing responses
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 
 class InterviewPrompts:
@@ -201,12 +201,69 @@ Be objective and fair. Focus on job-relevant criteria only."""
         previous_questions: list,
         previous_question_text: str,
         previous_response_text: str,
-        response_quality: str
+        response_quality: str,
+        non_answer_type: Optional[str] = None
     ) -> str:
         """Generate skill question that acknowledges the candidate's response"""
         previous_context = ""
         if previous_questions:
             previous_context = f"\n\nPreviously asked questions (avoid repetition):\n" + "\n".join(previous_questions[-3:])
+        
+        # Handle non-answer responses first
+        if non_answer_type == "not_ready":
+            return f"""You are a professional HR recruiter conducting a job interview. The candidate just said they are not ready for the interview.
+
+Previous Question: {previous_question_text}
+
+Candidate's Response: {previous_response_text}
+
+Job Description:
+Title: {job_description.get('title', 'N/A')}
+Description: {job_description.get('description', 'N/A')}
+
+IMPORTANT: The candidate indicated they are not ready. As a human HR professional, you should:
+1. Show empathy and understanding
+2. Offer to reschedule or give them a moment
+3. Be supportive and encouraging
+4. Ask if there's anything you can help with or if they need a few minutes
+
+Generate a natural, empathetic response (not a question) that addresses their concern. Sound like a real, caring HR person would. Be warm and understanding.
+
+Respond with ONLY your response text, no additional commentary."""
+        
+        if non_answer_type == "confused":
+            return f"""You are a professional HR recruiter conducting a job interview. The candidate seems confused or doesn't understand the question.
+
+Previous Question: {previous_question_text}
+
+Candidate's Response: {previous_response_text}
+
+IMPORTANT: The candidate is confused. As a human HR professional, you should:
+1. Acknowledge their confusion with empathy
+2. Rephrase or clarify the question in a simpler way
+3. Offer to help them understand
+4. Be patient and supportive
+
+Generate a natural, helpful response that clarifies the question and makes them feel comfortable. Sound like a real, patient HR person would.
+
+Respond with ONLY your response text (which should include a rephrased version of the question), no additional commentary."""
+        
+        if non_answer_type == "decline":
+            return f"""You are a professional HR recruiter conducting a job interview. The candidate declined to answer the question.
+
+Previous Question: {previous_question_text}
+
+Candidate's Response: {previous_response_text}
+
+IMPORTANT: The candidate declined to answer. As a human HR professional, you should:
+1. Respect their choice
+2. Acknowledge their response professionally
+3. Offer to move to a different topic
+4. Ask if there's a reason or if they'd prefer to skip this question
+
+Generate a natural, respectful response that acknowledges their choice and offers an alternative. Sound like a real, professional HR person would.
+
+Respond with ONLY your response text, no additional commentary."""
         
         acknowledgment_guidance = ""
         if response_quality == "weak":
@@ -216,7 +273,7 @@ Be objective and fair. Focus on job-relevant criteria only."""
         else:
             acknowledgment_guidance = "The candidate gave an adequate answer. Acknowledge their response naturally, and then ask a follow-up question to explore the topic further."
         
-        return f"""You are conducting a job interview. The candidate just answered your question. Generate your next question naturally, like a real HR person would.
+        return f"""You are a professional HR recruiter conducting a job interview. The candidate just answered your question. Generate your next question naturally, like a real HR person would.
 
 Previous Question: {previous_question_text}
 
@@ -250,9 +307,45 @@ Respond with ONLY the question text (including the acknowledgment), no additiona
         previous_questions: list,
         previous_question_text: str,
         previous_response_text: str,
-        response_quality: str
+        response_quality: str,
+        non_answer_type: Optional[str] = None
     ) -> str:
         """Generate experience question that acknowledges the candidate's response"""
+        # Handle non-answer responses first
+        if non_answer_type == "not_ready":
+            return f"""You are a professional HR recruiter conducting a job interview. The candidate just said they are not ready for the interview.
+
+Previous Question: {previous_question_text}
+
+Candidate's Response: {previous_response_text}
+
+IMPORTANT: The candidate indicated they are not ready. As a human HR professional, you should:
+1. Show empathy and understanding
+2. Offer to reschedule or give them a moment
+3. Be supportive and encouraging
+4. Ask if there's anything you can help with or if they need a few minutes
+
+Generate a natural, empathetic response (not a question) that addresses their concern. Sound like a real, caring HR person would. Be warm and understanding.
+
+Respond with ONLY your response text, no additional commentary."""
+        
+        if non_answer_type == "confused":
+            return f"""You are a professional HR recruiter conducting a job interview. The candidate seems confused or doesn't understand the question.
+
+Previous Question: {previous_question_text}
+
+Candidate's Response: {previous_response_text}
+
+IMPORTANT: The candidate is confused. As a human HR professional, you should:
+1. Acknowledge their confusion with empathy
+2. Rephrase or clarify the question in a simpler way
+3. Offer to help them understand
+4. Be patient and supportive
+
+Generate a natural, helpful response that clarifies the question and makes them feel comfortable. Sound like a real, patient HR person would.
+
+Respond with ONLY your response text (which should include a rephrased version of the question), no additional commentary."""
+        
         previous_context = ""
         if previous_questions:
             previous_context = f"\n\nPreviously asked questions (avoid repetition):\n" + "\n".join(previous_questions[-3:])
@@ -265,7 +358,7 @@ Respond with ONLY the question text (including the acknowledgment), no additiona
         else:
             acknowledgment_guidance = "The candidate gave an adequate answer. Acknowledge their response naturally, and then ask a follow-up about their experience."
         
-        return f"""You are conducting a job interview. The candidate just answered your question. Generate your next question naturally, like a real HR person would.
+        return f"""You are a professional HR recruiter conducting a job interview. The candidate just answered your question. Generate your next question naturally, like a real HR person would.
 
 Previous Question: {previous_question_text}
 

@@ -12,7 +12,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { StatCard } from '@/components/ui/StatCard'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { BarChart, PieChart } from '@/components/ui/SimpleChart'
+import { BarChart, PieChart, DonutChart, LineChart } from '@/components/ui/SimpleChart'
 import { apiClient } from '@/lib/api/client'
 import { LoadingState } from '@/components/ui/LoadingState'
 
@@ -245,7 +245,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Analytics Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
           {/* Application Status Distribution */}
           <Card title="Application Status Distribution">
             <PieChart
@@ -269,23 +269,138 @@ export default function DashboardPage() {
             />
           </Card>
 
-          {/* Job Statistics */}
-          <Card title="Job Statistics">
-            <BarChart
+          {/* Interview Completion Rate */}
+          <Card title="Interview Completion Rate">
+            <DonutChart
               data={[
                 {
-                  label: 'Total',
-                  value: stats?.total_jobs || 0,
-                  color: '#0ea5e9',
-                },
-                {
-                  label: 'Active',
-                  value: stats?.active_jobs || 0,
+                  label: 'Completed',
+                  value: stats?.completed_interviews || 0,
                   color: '#10b981',
                 },
-              ]}
-              height={150}
+                {
+                  label: 'In Progress',
+                  value: Math.max(0, (stats?.total_interviews || 0) - (stats?.completed_interviews || 0)),
+                  color: '#f59e0b',
+                },
+              ].filter(item => item.value > 0)}
             />
+          </Card>
+
+          {/* Job Statistics - Compact */}
+          <Card title="Job Statistics">
+            <div className="flex items-center justify-center h-full min-h-[180px]">
+              <BarChart
+                data={[
+                  {
+                    label: 'Total',
+                    value: stats?.total_jobs || 0,
+                    color: '#0ea5e9',
+                  },
+                  {
+                    label: 'Active',
+                    value: stats?.active_jobs || 0,
+                    color: '#10b981',
+                  },
+                ]}
+                height={120}
+              />
+            </div>
+          </Card>
+        </div>
+
+        {/* Additional Analytics */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Pipeline Metrics */}
+          <Card title="Pipeline Metrics">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600 dark:text-gray-400">Applications to Interviews</span>
+                <span className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {stats?.total_applications && stats?.total_interviews
+                    ? ((stats.total_interviews / stats.total_applications) * 100).toFixed(1)
+                    : '0'}%
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                <div
+                  className="bg-blue-500 dark:bg-blue-400 h-3 rounded-full transition-all"
+                  style={{
+                    width: stats?.total_applications && stats?.total_interviews
+                      ? `${(stats.total_interviews / stats.total_applications) * 100}%`
+                      : '0%',
+                  }}
+                />
+              </div>
+              
+              <div className="flex items-center justify-between pt-2">
+                <span className="text-sm text-gray-600 dark:text-gray-400">Interview Completion Rate</span>
+                <span className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {stats?.total_interviews && stats?.completed_interviews
+                    ? ((stats.completed_interviews / stats.total_interviews) * 100).toFixed(1)
+                    : '0'}%
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                <div
+                  className="bg-green-500 dark:bg-green-400 h-3 rounded-full transition-all"
+                  style={{
+                    width: stats?.total_interviews && stats?.completed_interviews
+                      ? `${(stats.completed_interviews / stats.total_interviews) * 100}%`
+                      : '0%',
+                  }}
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                <span className="text-sm text-gray-600 dark:text-gray-400">Qualification Rate</span>
+                <span className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {stats?.total_applications && stats?.qualified_candidates
+                    ? ((stats.qualified_candidates / stats.total_applications) * 100).toFixed(1)
+                    : '0'}%
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                <div
+                  className="bg-purple-500 dark:bg-purple-400 h-3 rounded-full transition-all"
+                  style={{
+                    width: stats?.total_applications && stats?.qualified_candidates
+                      ? `${(stats.qualified_candidates / stats.total_applications) * 100}%`
+                      : '0%',
+                  }}
+                />
+              </div>
+            </div>
+          </Card>
+
+          {/* Quick Stats Summary */}
+          <Card title="Quick Stats Summary">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                  {stats?.total_applications || 0}
+                </div>
+                <div className="text-xs text-blue-700 dark:text-blue-300 mt-1">Total Applications</div>
+              </div>
+              <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                  {stats?.qualified_candidates || 0}
+                </div>
+                <div className="text-xs text-green-700 dark:text-green-300 mt-1">Qualified</div>
+              </div>
+              <div className="text-center p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                  {stats?.total_interviews || 0}
+                </div>
+                <div className="text-xs text-purple-700 dark:text-purple-300 mt-1">Interviews</div>
+              </div>
+              <div className="text-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+                <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                  {stats?.completed_interviews || 0}
+                </div>
+                <div className="text-xs text-orange-700 dark:text-orange-300 mt-1">Completed</div>
+              </div>
+            </div>
           </Card>
         </div>
 

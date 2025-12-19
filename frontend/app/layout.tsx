@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import { Providers } from './providers'
+import { ErrorBoundaryWrapper } from '@/components/ErrorBoundaryWrapper'
 
 export const metadata: Metadata = {
   title: 'AI Voice Interview Platform',
@@ -15,9 +16,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <Providers>
-          {children}
-        </Providers>
+        <ErrorBoundaryWrapper>
+          <Providers>
+            {children}
+          </Providers>
+        </ErrorBoundaryWrapper>
       </body>
     </html>
   )

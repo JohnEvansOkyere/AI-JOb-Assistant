@@ -10,8 +10,11 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { apiClient } from '@/lib/api/client'
+import { ApiErrorHandler } from '@/lib/api/error-handler'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { ErrorDisplay } from '@/components/ui/ErrorDisplay'
+import { LoadingState } from '@/components/ui/LoadingState'
 import { JobDescription } from '@/types'
 import { Check, Copy } from 'lucide-react'
 
@@ -71,7 +74,8 @@ export default function JobsPage() {
       }
     } catch (err: any) {
       console.error('Error loading jobs:', err)
-      const errorMessage = err.response?.detail || err.message || 'An error occurred while loading jobs'
+      // Use error handler for user-friendly messages
+      const errorMessage = ApiErrorHandler.getErrorMessage(err)
       setError(errorMessage)
     } finally {
       setLoading(false)
@@ -86,10 +90,7 @@ export default function JobsPage() {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading...</p>
-          </div>
+          <LoadingState message="Loading jobs..." size="lg" />
         </div>
       </DashboardLayout>
     )
@@ -118,9 +119,12 @@ export default function JobsPage() {
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-            {error}
-          </div>
+          <ErrorDisplay
+            error={error}
+            onRetry={loadJobs}
+            onDismiss={() => setError('')}
+            title="Failed to load jobs"
+          />
         )}
 
         {jobs.length === 0 ? (

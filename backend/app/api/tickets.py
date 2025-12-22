@@ -207,19 +207,29 @@ async def validate_ticket(ticket_code: str):
                 recruiter_id = job_row.get("recruiter_id")
                 if recruiter_id:
                     try:
-                        user_resp = db.service_client.table("users").select("company_name").eq(
-                            "id", str(recruiter_id)
-                        ).limit(1).execute()
-                        if user_resp.data:
-                            company_name = user_resp.data[0].get("company_name")
-
-                        # Fallback to branding company name if user profile doesn't have it
-                        if not company_name:
+                        # First try to load default branding (most authoritative source)
+                        branding_resp = db.service_client.table("company_branding").select(
+                            "company_name"
+                        ).eq("recruiter_id", str(recruiter_id)).eq("is_default", True).limit(1).execute()
+                        
+                        if branding_resp.data and branding_resp.data[0].get("company_name"):
+                            company_name = branding_resp.data[0].get("company_name")
+                        else:
+                            # If no default branding, try any branding for this recruiter
                             branding_resp = db.service_client.table("company_branding").select(
                                 "company_name"
-                            ).eq("recruiter_id", str(recruiter_id)).eq("is_default", True).limit(1).execute()
-                            if branding_resp.data:
+                            ).eq("recruiter_id", str(recruiter_id)).limit(1).execute()
+                            
+                            if branding_resp.data and branding_resp.data[0].get("company_name"):
                                 company_name = branding_resp.data[0].get("company_name")
+                        
+                        # Fallback to user profile company_name only if branding doesn't have it
+                        if not company_name:
+                            user_resp = db.service_client.table("users").select("company_name").eq(
+                                "id", str(recruiter_id)
+                            ).limit(1).execute()
+                            if user_resp.data and user_resp.data[0].get("company_name"):
+                                company_name = user_resp.data[0].get("company_name")
                     except Exception as e:
                         logger.warning(
                             "Failed to load company for ticket validation",

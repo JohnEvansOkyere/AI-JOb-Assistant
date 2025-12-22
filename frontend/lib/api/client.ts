@@ -61,10 +61,15 @@ export class ApiClient {
     attempt: number = 0
   ): Promise<ApiResponse<T>> {
     const url = `${this.baseUrl}${endpoint}`
-    
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
       ...(options.headers as Record<string, string> || {}),
+    }
+
+    // Only set JSON content type when we're not sending FormData and the caller
+    // hasn't provided an explicit Content-Type header.
+    const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
+    if (!isFormData && !headers['Content-Type']) {
+      headers['Content-Type'] = 'application/json'
     }
 
     if (this.token) {

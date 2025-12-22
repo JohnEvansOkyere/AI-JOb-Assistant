@@ -26,10 +26,25 @@ export default function BrandingPage() {
     company_name: '',
     primary_color: '#2563eb',
     secondary_color: '#1e40af',
+    company_type: '',
+    industry: '',
+    company_size: '',
+    headquarters_location: '',
+    company_description: '',
+    mission_statement: '',
+    values_statement: '',
     company_website: '',
     company_address: '',
     company_phone: '',
     company_email: '',
+    hiring_email: '',
+    default_timezone: '',
+    working_model: '',
+    linkedin_url: '',
+    twitter_url: '',
+    facebook_url: '',
+    instagram_url: '',
+    careers_page_url: '',
     sender_name: '',
     sender_title: '',
     email_signature: '',
@@ -62,10 +77,25 @@ export default function BrandingPage() {
           company_name: branding.company_name || '',
           primary_color: branding.primary_color || '#2563eb',
           secondary_color: branding.secondary_color || '#1e40af',
+          company_type: branding.company_type || '',
+          industry: branding.industry || '',
+          company_size: branding.company_size || '',
+          headquarters_location: branding.headquarters_location || '',
+          company_description: branding.company_description || '',
+          mission_statement: branding.mission_statement || '',
+          values_statement: branding.values_statement || '',
           company_website: branding.company_website || '',
           company_address: branding.company_address || '',
           company_phone: branding.company_phone || '',
           company_email: branding.company_email || '',
+          hiring_email: branding.hiring_email || '',
+          default_timezone: branding.default_timezone || '',
+          working_model: branding.working_model || '',
+          linkedin_url: branding.linkedin_url || '',
+          twitter_url: branding.twitter_url || '',
+          facebook_url: branding.facebook_url || '',
+          instagram_url: branding.instagram_url || '',
+          careers_page_url: branding.careers_page_url || '',
           sender_name: branding.sender_name || '',
           sender_title: branding.sender_title || '',
           email_signature: branding.email_signature || '',
@@ -164,7 +194,9 @@ export default function BrandingPage() {
             </Button>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Company Branding</h1>
-              <p className="text-gray-600 mt-1">Customize your email letterhead and branding</p>
+              <p className="text-gray-600 mt-1">
+                Customize your company profile, branding, and how candidates see your company
+              </p>
             </div>
           </div>
           <Button
@@ -196,6 +228,34 @@ export default function BrandingPage() {
                   onChange={(e) => setFormData({ ...formData, company_website: e.target.value })}
                   placeholder="https://example.com"
                 />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Input
+                    label="Company Type"
+                    value={formData.company_type}
+                    onChange={(e) => setFormData({ ...formData, company_type: e.target.value })}
+                    placeholder="Startup, Agency, Enterprise..."
+                  />
+                  <Input
+                    label="Industry"
+                    value={formData.industry}
+                    onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
+                    placeholder="Fintech, Health, Education..."
+                  />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Input
+                    label="Company Size"
+                    value={formData.company_size}
+                    onChange={(e) => setFormData({ ...formData, company_size: e.target.value })}
+                    placeholder="1-10, 11-50, 50-200..."
+                  />
+                  <Input
+                    label="Headquarters Location"
+                    value={formData.headquarters_location}
+                    onChange={(e) => setFormData({ ...formData, headquarters_location: e.target.value })}
+                    placeholder="City, Country"
+                  />
+                </div>
                 <Input
                   label="Company Address"
                   value={formData.company_address}
@@ -211,6 +271,79 @@ export default function BrandingPage() {
                   type="email"
                   value={formData.company_email}
                   onChange={(e) => setFormData({ ...formData, company_email: e.target.value })}
+                />
+                <Input
+                  label="Primary Hiring Contact Email"
+                  type="email"
+                  value={formData.hiring_email}
+                  onChange={(e) => setFormData({ ...formData, hiring_email: e.target.value })}
+                  placeholder="talent@company.com"
+                />
+              </div>
+            </Card>
+
+            <Card>
+              <div className="p-6 space-y-4">
+                <h2 className="font-semibold text-gray-900">Company Story</h2>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Short Description
+                  </label>
+                  <textarea
+                    value={formData.company_description}
+                    onChange={(e) => setFormData({ ...formData, company_description: e.target.value })}
+                    placeholder="Describe what your company does and why it exists..."
+                    className="w-full h-24 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Mission Statement
+                  </label>
+                  <textarea
+                    value={formData.mission_statement}
+                    onChange={(e) => setFormData({ ...formData, mission_statement: e.target.value })}
+                    placeholder="What are you trying to achieve as a company?"
+                    className="w-full h-20 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Values (what you care about)
+                  </label>
+                  <textarea
+                    value={formData.values_statement}
+                    onChange={(e) => setFormData({ ...formData, values_statement: e.target.value })}
+                    placeholder="e.g. Ownership, transparency, diversity, work-life balance..."
+                    className="w-full h-20 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  />
+                </div>
+              </div>
+            </Card>
+
+            <Card>
+              <div className="p-6 space-y-4">
+                <h2 className="font-semibold text-gray-900">Hiring Preferences</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Input
+                    label="Default Timezone"
+                    value={formData.default_timezone}
+                    onChange={(e) => setFormData({ ...formData, default_timezone: e.target.value })}
+                    placeholder="e.g. Europe/London"
+                  />
+                  <Input
+                    label="Working Model"
+                    value={formData.working_model}
+                    onChange={(e) => setFormData({ ...formData, working_model: e.target.value })}
+                    placeholder="Onsite, Remote, Hybrid"
+                  />
+                </div>
+                <Input
+                  label="Careers Page URL"
+                  type="url"
+                  value={formData.careers_page_url}
+                  onChange={(e) => setFormData({ ...formData, careers_page_url: e.target.value })}
+                  placeholder="https://company.com/careers"
                 />
               </div>
             </Card>
@@ -339,6 +472,9 @@ export default function BrandingPage() {
                       />
                     )}
                     <h3 className="font-bold">{formData.company_name || 'Company Name'}</h3>
+                    {formData.company_type && (
+                      <p className="text-sm opacity-90">{formData.company_type}</p>
+                    )}
                   </div>
                   <div className="bg-white p-4 rounded">
                     <p className="text-sm text-gray-700">Email content will appear here...</p>

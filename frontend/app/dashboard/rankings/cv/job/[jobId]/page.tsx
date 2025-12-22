@@ -12,7 +12,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { apiClient } from '@/lib/api/client'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { User, Mail, Trophy, Copy, Link as LinkIcon, Check, Zap, Award, Code, BookOpen, Cpu, FileText, TrendingUp } from 'lucide-react'
+import { User, Mail, Trophy, Copy, Link as LinkIcon, Check, Zap, Award, Code, BookOpen, Cpu, FileText, TrendingUp, Ticket, RefreshCw } from 'lucide-react'
 import { getInterviewLink, copyToClipboard } from '@/lib/utils/interview'
 
 interface Ticket {
@@ -115,6 +115,7 @@ export default function JobRankingsPage() {
   const [error, setError] = useState('')
   const [copiedTicketCode, setCopiedTicketCode] = useState<string | null>(null)
   const [isCopiedLink, setIsCopiedLink] = useState(false)
+  const [creatingTicket, setCreatingTicket] = useState<string | null>(null) // Track which candidate is getting a ticket
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -141,11 +142,14 @@ export default function JobRankingsPage() {
       if (response.success && response.data) {
         setCandidates(response.data)
         // Fetch existing tickets for this job to know which candidates already have tickets
+        // Only get unused tickets
         try {
           const ticketsResponse = await apiClient.get<Ticket[]>(`/tickets/job/${jobId}`)
           if (ticketsResponse.success && ticketsResponse.data) {
             const map: Record<string, Ticket> = {}
-            ticketsResponse.data.forEach((t) => {
+            // Filter to only unused tickets
+            const unusedTickets = ticketsResponse.data.filter((t: any) => !t.is_used)
+            unusedTickets.forEach((t) => {
               const cid = t.candidate_id
               if (!cid) return
               const existing = map[cid]
@@ -173,10 +177,10 @@ export default function JobRankingsPage() {
   }
 
   const getRecommendationColor = (recommendation?: string) => {
-    if (!recommendation) return 'bg-gray-100 text-gray-800'
-    if (recommendation === 'qualified') return 'bg-green-100 text-green-800'
-    if (recommendation === 'maybe_qualified') return 'bg-yellow-100 text-yellow-800'
-    return 'bg-red-100 text-red-800'
+    if (!recommendation) return 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
+    if (recommendation === 'qualified') return 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
+    if (recommendation === 'maybe_qualified') return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300'
+    return 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300'
   }
 
   const getRankBadgeColor = (rank: number) => {
@@ -203,6 +207,31 @@ export default function JobRankingsPage() {
     }
   }
 
+  const handleCreateTicket = async (candidateId: string) => {
+    try {
+      setCreatingTicket(candidateId)
+      const token = localStorage.getItem('auth_token')
+      if (token) apiClient.setToken(token)
+
+      const response = await apiClient.post<{ ticket_code: string }>('/tickets', {
+        candidate_id: candidateId,
+        job_description_id: jobId
+      })
+
+      if (response.success && response.data) {
+        // Reload rankings to get the new ticket
+        await loadRankings()
+      } else {
+        setError(response.message || 'Failed to create ticket')
+      }
+    } catch (err: any) {
+      console.error('Error creating ticket:', err)
+      setError(err.message || 'Failed to create ticket')
+    } finally {
+      setCreatingTicket(null)
+    }
+  }
+
   if (authLoading || loading) {
     return (
       <DashboardLayout>
@@ -225,8 +254,8 @@ export default function JobRankingsPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">CV Rankings</h1>
-            <p className="text-gray-600 mt-1">Ranked by CV screening match score (highest first)</p>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">CV Rankings</h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-1">Ranked by CV screening match score (highest first)</p>
           </div>
           <div className="flex gap-2">
             <Button
@@ -286,16 +315,16 @@ export default function JobRankingsPage() {
                       <div>
                         <div className="flex items-center gap-2 mb-1">
                           <User className="w-5 h-5 text-gray-500" />
-                          <h3 className="text-lg font-semibold text-gray-900">
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                             {candidate.candidates?.full_name || 'Unknown'}
                           </h3>
                           {candidate.cv_screening_results?.has_detailed_screening && (
-                            <span className="text-xs px-1.5 py-0.5 bg-primary-100 text-primary-700 rounded">
+                            <span className="text-xs px-1.5 py-0.5 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded">
                               Detailed
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                           <Mail className="w-4 h-4" />
                           <span>{candidate.candidates?.email || 'N/A'}</span>
                         </div>
@@ -440,41 +469,56 @@ export default function JobRankingsPage() {
                       View Details
                     </Button>
                     {(() => {
+                      // Show ticket for ALL screened candidates (tickets are auto-generated after screening)
                       const ticket = ticketsByCandidate[candidate.candidate_id]
                       if (ticket) {
                         const isCopiedCode = copiedTicketCode === ticket.ticket_code
                         return (
                           <div className="space-y-2">
-                            <div className="flex items-center gap-1 p-2 bg-gray-50 rounded border border-gray-200">
-                              <span className="text-xs font-mono text-gray-700 flex-1 truncate">
+                            <div className="flex items-center gap-1 p-2 bg-green-50 dark:bg-green-900/20 rounded border border-green-200 dark:border-green-700">
+                              <Ticket className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0" />
+                              <span className="text-xs font-mono text-green-800 dark:text-green-300 flex-1 truncate">
                                 {ticket.ticket_code}
                               </span>
                               <button
                                 onClick={() => handleCopyTicketCode(ticket.ticket_code)}
-                                className="p-1 hover:bg-gray-200 rounded transition-colors"
+                                className="p-1 hover:bg-green-100 dark:hover:bg-green-800 rounded transition-colors"
                                 title="Copy ticket code"
                               >
                                 {isCopiedCode ? (
-                                  <Check className="w-3 h-3 text-green-600" />
+                                  <Check className="w-3 h-3 text-green-600 dark:text-green-400" />
                                 ) : (
-                                  <Copy className="w-3 h-3 text-gray-600" />
+                                  <Copy className="w-3 h-3 text-green-600 dark:text-green-400" />
                                 )}
                               </button>
                             </div>
-                            <p className="text-xs text-gray-500 text-center">
-                              Use shared interview link above
+                            <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                              Interview ticket ready
                             </p>
                           </div>
                         )
                       }
-                      if (candidate.cv_screening_results?.recommendation === 'qualified') {
+                      // If no ticket exists but candidate has been screened, show Generate Ticket button
+                      if (candidate.cv_screening_results) {
                         return (
                           <Button
-                            variant="primary"
+                            variant="outline"
                             size="sm"
-                            onClick={() => router.push(`/dashboard/jobs/${jobId}/applications/${candidate.id}/create-ticket`)}
+                            onClick={() => handleCreateTicket(candidate.candidate_id)}
+                            disabled={creatingTicket === candidate.candidate_id}
+                            className="flex items-center gap-2"
                           >
-                            Issue Ticket
+                            {creatingTicket === candidate.candidate_id ? (
+                              <>
+                                <RefreshCw className="w-4 h-4 animate-spin" />
+                                <span>Generating...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Ticket className="w-4 h-4" />
+                                <span>Generate Ticket</span>
+                              </>
+                            )}
                           </Button>
                         )
                       }

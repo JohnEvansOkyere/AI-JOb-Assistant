@@ -8,6 +8,7 @@
 import { ReactNode, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import { useBranding } from '@/hooks/useBranding'
 import { Button } from '@/components/ui/Button'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { clsx } from 'clsx'
@@ -27,7 +28,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter()
   const pathname = usePathname()
   const { user, logout } = useAuth()
+  const { branding } = useBranding()
   const [sidebarOpen, setSidebarOpen] = useState(true)
+
+  const companyTitle =
+    branding?.company_name ||
+    user?.company_name ||
+    'AI Interview Platform'
 
   const handleLogout = async () => {
     await logout()
@@ -129,7 +136,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Mobile menu button */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-900 dark:text-white">AI Interview Platform</h1>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate max-w-[60%]">
+          {companyTitle}
+        </h1>
         <div className="flex items-center gap-2">
           <ThemeToggle variant="icon" />
           <button
@@ -155,8 +164,12 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <div className="h-full flex flex-col">
           {/* Logo/Brand */}
           <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 hidden lg:block">
-            <h1 className="text-xl font-bold text-gray-900 dark:text-white">AI Interview Platform</h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Recruiter Dashboard</p>
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate">
+              {companyTitle}
+            </h1>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Recruiter Dashboard
+            </p>
           </div>
 
           {/* Navigation */}

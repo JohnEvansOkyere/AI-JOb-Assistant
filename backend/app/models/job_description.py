@@ -54,3 +54,15 @@ class JobDescription(JobDescriptionBase):
     class Config:
         from_attributes = True
 
+
+class PublicJobDescription(JobDescription):
+    """Public job description model with company branding fields"""
+    company_name: Optional[str] = None
+    company_logo_url: Optional[str] = None
+    company_type: Optional[str] = None
+    industry: Optional[str] = None
+    headquarters_location: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+

@@ -2,11 +2,14 @@
 
 import { AuthProvider } from '@/hooks/useAuth'
 import { ThemeProvider } from '@/hooks/useTheme'
+import { BrandingProvider } from '@/hooks/useBranding'
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
-      <AuthProvider>{children}</AuthProvider>
+      <AuthProvider>
+        <BrandingProvider>{children}</BrandingProvider>
+      </AuthProvider>
     </ThemeProvider>
   )
 }

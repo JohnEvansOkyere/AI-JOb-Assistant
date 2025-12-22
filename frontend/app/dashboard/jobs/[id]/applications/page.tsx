@@ -150,10 +150,10 @@ export default function JobApplicationsPage() {
   }
 
   const getRecommendationColor = (recommendation?: string) => {
-    if (!recommendation) return 'bg-gray-100 text-gray-800'
-    if (recommendation === 'qualified') return 'bg-green-100 text-green-800'
-    if (recommendation === 'maybe_qualified') return 'bg-yellow-100 text-yellow-800'
-    return 'bg-red-100 text-red-800'
+    if (!recommendation) return 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
+    if (recommendation === 'qualified') return 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
+    if (recommendation === 'maybe_qualified') return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300'
+    return 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300'
   }
 
   if (authLoading || loading) {
@@ -176,8 +176,8 @@ export default function JobApplicationsPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Job Applications</h1>
-            <p className="text-gray-600 mt-1">Review and screen candidate applications</p>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Job Applications</h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-1">Review and screen candidate applications</p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => router.push(`/dashboard/jobs/${jobId}`)}>
@@ -229,27 +229,27 @@ export default function JobApplicationsPage() {
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
                     <div className="flex items-center gap-4 mb-2">
-                      <h3 className="text-lg font-semibold text-gray-900">
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                         {app.candidates?.full_name || 'Unknown'}
                       </h3>
                       <span className={`text-xs px-2 py-1 rounded ${getRecommendationColor(app.cv_screening_results?.recommendation)}`}>
                         {app.cv_screening_results?.recommendation?.replace('_', ' ') || app.status}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-600 mb-2">{app.candidates?.email}</p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{app.candidates?.email}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
                       Applied: {new Date(app.applied_at).toLocaleDateString()}
                     </p>
                     
                     {app.cv_screening_results && (
-                      <div className="mt-4 p-3 bg-gray-50 rounded">
+                      <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded">
                         <div className="flex items-center gap-4 mb-2">
                           <span className="text-sm font-medium">Match Score: {app.cv_screening_results.match_score}%</span>
                         </div>
                         {app.cv_screening_results.strengths && app.cv_screening_results.strengths.length > 0 && (
                           <div className="mb-2">
-                            <p className="text-xs font-medium text-green-700 mb-1">Strengths:</p>
-                            <ul className="text-xs text-gray-600 list-disc list-inside">
+                            <p className="text-xs font-medium text-green-700 dark:text-green-400 mb-1">Strengths:</p>
+                            <ul className="text-xs text-gray-600 dark:text-gray-300 list-disc list-inside">
                               {app.cv_screening_results.strengths.slice(0, 3).map((s, i) => (
                                 <li key={i}>{s}</li>
                               ))}
@@ -258,8 +258,8 @@ export default function JobApplicationsPage() {
                         )}
                         {app.cv_screening_results.gaps && app.cv_screening_results.gaps.length > 0 && (
                           <div>
-                            <p className="text-xs font-medium text-red-700 mb-1">Gaps:</p>
-                            <ul className="text-xs text-gray-600 list-disc list-inside">
+                            <p className="text-xs font-medium text-red-700 dark:text-red-400 mb-1">Gaps:</p>
+                            <ul className="text-xs text-gray-600 dark:text-gray-300 list-disc list-inside">
                               {app.cv_screening_results.gaps.slice(0, 3).map((g, i) => (
                                 <li key={i}>{g}</li>
                               ))}
@@ -271,12 +271,13 @@ export default function JobApplicationsPage() {
                   </div>
                   
                   <div className="flex flex-col gap-2 ml-4">
-                    {app.status === 'pending' && !app.cv_screening_results && (
+                    {/* Show Screen button for any application without screening results, or allow re-screening */}
+                    {!app.cv_screening_results && (
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => handleScreenOne(app.id)}
-                        disabled={screeningAppId === app.id || screeningAppId !== null}
+                        disabled={screeningAppId === app.id || (screeningAppId !== null && screeningAppId !== app.id)}
                       >
                         {screeningAppId === app.id ? (
                           <span className="flex items-center">
@@ -293,15 +294,28 @@ export default function JobApplicationsPage() {
                         )}
                       </Button>
                     )}
-                    {/* Generate Ticket - available for all candidates */}
-                    <Button
-                      variant={app.cv_screening_results?.recommendation === 'qualified' ? 'primary' : 'outline'}
-                      size="sm"
-                      onClick={() => router.push(`/dashboard/jobs/${jobId}/applications/${app.id}/create-ticket`)}
-                      title="Generate interview ticket for this candidate"
-                    >
-                      🎫 Generate Ticket
-                    </Button>
+                    {/* Allow re-screening even if already screened */}
+                    {app.cv_screening_results && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleScreenOne(app.id)}
+                        disabled={screeningAppId === app.id || (screeningAppId !== null && screeningAppId !== app.id)}
+                        title="Re-screen this candidate"
+                      >
+                        {screeningAppId === app.id ? (
+                          <span className="flex items-center">
+                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Re-screening...
+                          </span>
+                        ) : (
+                          'Re-screen'
+                        )}
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"

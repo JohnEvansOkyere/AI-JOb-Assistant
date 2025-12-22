@@ -11,9 +11,9 @@ import { useAuth } from '@/hooks/useAuth'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
 import { apiClient } from '@/lib/api/client'
-import { Briefcase, User, Mail, Calendar, CheckCircle, Clock, XCircle, Filter } from 'lucide-react'
+import { Briefcase, User, Mail, Calendar, CheckCircle, Clock, XCircle, Filter, ChevronDown } from 'lucide-react'
+import { JobDescription } from '@/types'
 
 interface Application {
   id: string
@@ -43,9 +43,11 @@ export default function ApplicationsPage() {
   const router = useRouter()
   const { isAuthenticated, loading: authLoading } = useAuth()
   const [applications, setApplications] = useState<Application[]>([])
+  const [jobs, setJobs] = useState<JobDescription[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingJobs, setLoadingJobs] = useState(true)
   const [error, setError] = useState('')
-  const [searchTerm, setSearchTerm] = useState('')
+  const [selectedJobId, setSelectedJobId] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
 
   useEffect(() => {
@@ -56,6 +58,7 @@ export default function ApplicationsPage() {
 
     if (isAuthenticated) {
       loadApplications()
+      loadJobs()
     }
   }, [isAuthenticated, authLoading, router])
 
@@ -81,15 +84,29 @@ export default function ApplicationsPage() {
     }
   }
 
+  const loadJobs = async () => {
+    try {
+      setLoadingJobs(true)
+      const token = localStorage.getItem('auth_token')
+      if (token) {
+        apiClient.setToken(token)
+      }
+      const response = await apiClient.get<JobDescription[]>('/job-descriptions')
+      if (response.success && response.data) {
+        setJobs(response.data)
+      }
+    } catch (err: any) {
+      console.error('Error loading jobs:', err)
+    } finally {
+      setLoadingJobs(false)
+    }
+  }
+
   const filteredApplications = applications.filter(app => {
-    const matchesSearch = 
-      app.candidates?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      app.candidates?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      app.job_descriptions?.title?.toLowerCase().includes(searchTerm.toLowerCase())
-    
+    const matchesJob = selectedJobId === 'all' || app.job_description_id === selectedJobId
     const matchesStatus = statusFilter === 'all' || app.status === statusFilter
     
-    return matchesSearch && matchesStatus
+    return matchesJob && matchesStatus
   })
 
   const getStatusBadge = (status: string) => {
@@ -110,13 +127,18 @@ export default function ApplicationsPage() {
     )
   }
 
+  // Calculate status counts based on job-filtered applications
+  const jobFilteredApplications = selectedJobId === 'all' 
+    ? applications 
+    : applications.filter(app => app.job_description_id === selectedJobId)
+  
   const statusCounts = {
-    all: applications.length,
-    pending: applications.filter(a => a.status === 'pending').length,
-    qualified: applications.filter(a => a.status === 'qualified').length,
-    screening: applications.filter(a => a.status === 'screening').length,
-    rejected: applications.filter(a => a.status === 'rejected').length,
-    interview_scheduled: applications.filter(a => a.status === 'interview_scheduled').length,
+    all: jobFilteredApplications.length,
+    pending: jobFilteredApplications.filter(a => a.status === 'pending').length,
+    qualified: jobFilteredApplications.filter(a => a.status === 'qualified').length,
+    screening: jobFilteredApplications.filter(a => a.status === 'screening').length,
+    rejected: jobFilteredApplications.filter(a => a.status === 'rejected').length,
+    interview_scheduled: jobFilteredApplications.filter(a => a.status === 'interview_scheduled').length,
   }
 
   if (authLoading || loading) {
@@ -161,28 +183,49 @@ export default function ApplicationsPage() {
         )}
 
         {/* Filters */}
-        <div className="bg-white rounded-lg shadow-md p-4 space-y-4">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md dark:shadow-lg p-4 border border-gray-200 dark:border-gray-700">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              type="text"
-              placeholder="Search by candidate name, email, or job title..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
             <div className="flex items-center gap-2">
-              <Filter className="h-5 w-5 text-gray-400" />
-              <select
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-              >
-                <option value="all">All Status ({statusCounts.all})</option>
-                <option value="pending">Pending ({statusCounts.pending})</option>
-                <option value="screening">Screening ({statusCounts.screening})</option>
-                <option value="qualified">Qualified ({statusCounts.qualified})</option>
-                <option value="rejected">Rejected ({statusCounts.rejected})</option>
-                <option value="interview_scheduled">Interview Scheduled ({statusCounts.interview_scheduled})</option>
-              </select>
+              <Briefcase className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+              <div className="relative flex-1">
+                <select
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white appearance-none cursor-pointer"
+                  value={selectedJobId}
+                  onChange={(e) => setSelectedJobId(e.target.value)}
+                  disabled={loadingJobs}
+                >
+                  <option value="all">All Job Posts ({applications.length})</option>
+                  {jobs.map((job) => {
+                    const jobApplicationCount = applications.filter(
+                      app => app.job_description_id === job.id
+                    ).length
+                    return (
+                      <option key={job.id} value={job.id}>
+                        {job.title} ({jobApplicationCount})
+                      </option>
+                    )
+                  })}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-gray-500 pointer-events-none" />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Filter className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+              <div className="relative flex-1">
+                <select
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white appearance-none cursor-pointer"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                  <option value="all">All Status ({statusCounts.all})</option>
+                  <option value="pending">Pending ({statusCounts.pending})</option>
+                  <option value="screening">Screening ({statusCounts.screening})</option>
+                  <option value="qualified">Qualified ({statusCounts.qualified})</option>
+                  <option value="rejected">Rejected ({statusCounts.rejected})</option>
+                  <option value="interview_scheduled">Interview Scheduled ({statusCounts.interview_scheduled})</option>
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-gray-500 pointer-events-none" />
+              </div>
             </div>
           </div>
         </div>
@@ -191,12 +234,12 @@ export default function ApplicationsPage() {
           <Card>
             <div className="text-center py-12">
               <Briefcase className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600 mb-4">
-                {searchTerm || statusFilter !== 'all'
+              <p className="text-gray-600 dark:text-gray-400 mb-4">
+                {selectedJobId !== 'all' || statusFilter !== 'all'
                   ? 'No applications match your filters.'
                   : 'No applications yet.'}
               </p>
-              {!searchTerm && statusFilter === 'all' && (
+              {selectedJobId === 'all' && statusFilter === 'all' && (
                 <Button variant="primary" onClick={() => router.push('/dashboard/jobs')}>
                   View Job Postings
                 </Button>

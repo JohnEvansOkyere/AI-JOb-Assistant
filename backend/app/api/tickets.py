@@ -178,6 +178,7 @@ async def validate_ticket(ticket_code: str):
         # Enrich with candidate and job information for nicer candidate UX
         candidate_name = None
         job_title = None
+        company_name = None
 
         try:
             candidate_resp = db.service_client.table("candidates").select("full_name").eq(
@@ -193,11 +194,38 @@ async def validate_ticket(ticket_code: str):
             )
 
         try:
-            job_resp = db.service_client.table("job_descriptions").select("title").eq(
+            job_resp = db.service_client.table("job_descriptions").select(
+                "id, title, recruiter_id"
+            ).eq(
                 "id", str(ticket["job_description_id"])
             ).execute()
             if job_resp.data:
-                job_title = job_resp.data[0].get("title")
+                job_row = job_resp.data[0]
+                job_title = job_row.get("title")
+
+                # Look up recruiter/company for branding and candidate awareness
+                recruiter_id = job_row.get("recruiter_id")
+                if recruiter_id:
+                    try:
+                        user_resp = db.service_client.table("users").select("company_name").eq(
+                            "id", str(recruiter_id)
+                        ).limit(1).execute()
+                        if user_resp.data:
+                            company_name = user_resp.data[0].get("company_name")
+
+                        # Fallback to branding company name if user profile doesn't have it
+                        if not company_name:
+                            branding_resp = db.service_client.table("company_branding").select(
+                                "company_name"
+                            ).eq("recruiter_id", str(recruiter_id)).eq("is_default", True).limit(1).execute()
+                            if branding_resp.data:
+                                company_name = branding_resp.data[0].get("company_name")
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to load company for ticket validation",
+                            error=str(e),
+                            recruiter_id=str(recruiter_id),
+                        )
         except Exception as e:
             logger.warning(
                 "Failed to load job for ticket validation",
@@ -215,6 +243,7 @@ async def validate_ticket(ticket_code: str):
                 "job_description_id": ticket["job_description_id"],
                 "candidate_name": candidate_name,
                 "job_title": job_title,
+                "company_name": company_name,
             }
         )
     except Exception as e:

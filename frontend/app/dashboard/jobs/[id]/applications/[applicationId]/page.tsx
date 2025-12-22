@@ -243,14 +243,6 @@ export default function ApplicationDetailsPage() {
                 {screening ? 'Screening...' : 'Screen Application'}
               </Button>
             )}
-            {application.cv_screening_results?.recommendation === 'qualified' && (
-              <Button
-                variant="primary"
-                onClick={() => router.push(`/dashboard/jobs/${jobId}/applications/${applicationId}/create-ticket`)}
-              >
-                Issue Interview Ticket
-              </Button>
-            )}
           </div>
         </div>
 

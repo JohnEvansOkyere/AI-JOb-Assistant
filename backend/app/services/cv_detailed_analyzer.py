@@ -1152,9 +1152,88 @@ Rate from 0-100. Return ONLY a number."""
                 response = db.service_client.table("cv_detailed_screening").insert(data).execute()
             
             logger.info("Detailed CV analysis saved", application_id=str(analysis.application_id))
+            
+            # Automatically create interview ticket after screening is complete
+            # Only create if this is a new analysis (not an update)
+            if not existing.data:
+                try:
+                    await self._create_ticket_after_screening(analysis.application_id)
+                except Exception as ticket_error:
+                    # Log but don't fail the analysis save if ticket creation fails
+                    logger.warning(
+                        "Failed to create ticket after screening",
+                        application_id=str(analysis.application_id),
+                        error=str(ticket_error)
+                    )
+            
             return response.data[0] if response.data else data
             
         except Exception as e:
             logger.error("Error saving detailed analysis", error=str(e), exc_info=True)
+            raise
+    
+    async def _create_ticket_after_screening(self, application_id: UUID):
+        """Create an interview ticket automatically after CV screening is complete"""
+        try:
+            # Get application details to find candidate_id and job_description_id
+            app_response = db.service_client.table("job_applications").select(
+                "candidate_id, job_description_id, job_descriptions!inner(recruiter_id)"
+            ).eq("id", str(application_id)).execute()
+            
+            if not app_response.data:
+                logger.warning("Application not found for ticket creation", application_id=str(application_id))
+                return
+            
+            app = app_response.data[0]
+            candidate_id = app.get("candidate_id")
+            job_description_id = app.get("job_description_id")
+            recruiter_id = app.get("job_descriptions", {}).get("recruiter_id")
+            
+            if not all([candidate_id, job_description_id, recruiter_id]):
+                logger.warning(
+                    "Missing required data for ticket creation",
+                    application_id=str(application_id),
+                    has_candidate=bool(candidate_id),
+                    has_job=bool(job_description_id),
+                    has_recruiter=bool(recruiter_id)
+                )
+                return
+            
+            # Check if ticket already exists for this candidate and job
+            existing_ticket = db.service_client.table("interview_tickets").select("id").eq(
+                "candidate_id", str(candidate_id)
+            ).eq("job_description_id", str(job_description_id)).eq("is_used", False).execute()
+            
+            if existing_ticket.data:
+                logger.info(
+                    "Ticket already exists for this application",
+                    application_id=str(application_id),
+                    ticket_id=existing_ticket.data[0]["id"]
+                )
+                return
+            
+            # Create new ticket using TicketService
+            from app.services.ticket_service import TicketService
+            ticket = await TicketService.create_ticket(
+                candidate_id=UUID(candidate_id),
+                job_description_id=UUID(job_description_id),
+                created_by=UUID(recruiter_id),
+                expires_in_hours=None  # No expiration by default
+            )
+            
+            logger.info(
+                "Ticket created automatically after screening",
+                application_id=str(application_id),
+                ticket_id=ticket["id"],
+                ticket_code=ticket["ticket_code"]
+            )
+            
+        except Exception as e:
+            logger.error(
+                "Error creating ticket after screening",
+                application_id=str(application_id),
+                error=str(e),
+                exc_info=True
+            )
             raise
 

@@ -17,6 +17,11 @@ export interface JobDescription {
   recruiter_id: string
   title: string
   description: string
+  company_name?: string
+  company_logo_url?: string
+  company_type?: string
+  industry?: string
+  headquarters_location?: string
   requirements?: string
   location?: string
   employment_type?: string

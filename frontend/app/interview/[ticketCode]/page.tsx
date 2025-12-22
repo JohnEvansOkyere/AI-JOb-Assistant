@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Send, Bot, User, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { apiClient } from '@/lib/api/client'
 
 type Message =
   | { role: 'system'; text: string }
@@ -18,8 +19,12 @@ export default function InterviewPage() {
   const router = useRouter()
   const ticketCode = params.ticketCode as string
   const searchParams = useSearchParams()
-  const candidateName = searchParams.get('name')
-  const jobTitle = searchParams.get('job')
+  const urlCandidateName = searchParams.get('name')
+  const urlJobTitle = searchParams.get('job')
+
+  const [candidateName, setCandidateName] = useState<string | null>(urlCandidateName)
+  const [jobTitle, setJobTitle] = useState<string | null>(urlJobTitle)
+  const [companyName, setCompanyName] = useState<string | null>(null)
 
   const [ws, setWs] = useState<WebSocket | null>(null)
   const [connected, setConnected] = useState(false)
@@ -38,6 +43,33 @@ export default function InterviewPage() {
   const [interviewComplete, setInterviewComplete] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Load ticket context (candidate, job, company) so the candidate always sees who they are interviewing with
+  useEffect(() => {
+    const loadContext = async () => {
+      try {
+        const response = await apiClient.post<any>('/tickets/validate', { ticket_code: ticketCode })
+        if (response.success && response.data) {
+          const data = response.data
+          if (!candidateName && data.candidate_name) {
+            setCandidateName(data.candidate_name)
+          }
+          if (!jobTitle && data.job_title) {
+            setJobTitle(data.job_title)
+          }
+          if (data.company_name) {
+            setCompanyName(data.company_name)
+          }
+        }
+      } catch (err) {
+        // Soft fail: WebSocket flow will still validate the ticket
+        console.error('Failed to load interview context', err)
+      }
+    }
+
+    loadContext()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticketCode])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -196,7 +228,9 @@ export default function InterviewPage() {
                 <Bot className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-lg font-semibold text-gray-900 dark:text-white">Interview with Recruiter</h1>
+                <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {companyName ? `Interview with ${companyName}` : 'Interview with Recruiter'}
+                </h1>
                 <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
                   {jobTitle && (
                     <span className="flex items-center gap-1">

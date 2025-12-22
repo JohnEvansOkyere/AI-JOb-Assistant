@@ -30,6 +30,7 @@ interface Candidate {
   email: string
   application_id: string
   has_analysis: boolean
+  ticket_code?: string | null
 }
 
 interface Job {
@@ -136,9 +137,22 @@ export default function CVReportsPage() {
       const response = await apiClient.get<any[]>(`/applications/job/${jobId}`)
       
       if (response.success && response.data) {
-        // Check which have analysis
+        // Get all tickets for this job
+        let tickets: any[] = []
+        try {
+          const ticketsResponse = await apiClient.get<any[]>(`/tickets/job/${jobId}`)
+          if (ticketsResponse.success && ticketsResponse.data) {
+            tickets = ticketsResponse.data.filter((t: any) => !t.is_used)
+          }
+        } catch (err) {
+          console.error('Error loading tickets:', err)
+        }
+        
+        // Check which have analysis and tickets
         const candidateList: Candidate[] = await Promise.all(
           response.data.map(async (app: any) => {
+            const candidateId = app.candidates?.id || app.candidate_id
+            
             // Check if analysis exists
             let hasAnalysis = false
             try {
@@ -149,12 +163,18 @@ export default function CVReportsPage() {
               }
             } catch {}
             
+            // Find ticket for this candidate
+            const ticket = tickets.find(
+              (t: any) => t.candidate_id === candidateId
+            )
+            
             return {
-              id: app.candidates?.id || app.candidate_id,
+              id: candidateId,
               full_name: app.candidates?.full_name || 'Unknown',
               email: app.candidates?.email || '',
               application_id: app.id,
-              has_analysis: hasAnalysis
+              has_analysis: hasAnalysis,
+              ticket_code: ticket?.ticket_code || null
             }
           })
         )
@@ -186,12 +206,45 @@ export default function CVReportsPage() {
           analysisData = response.data as CVAnalysis
         }
         setAnalysis(analysisData)
+        
+        // Use ticket from candidate object if available, otherwise fetch
+        if (analysisData && selectedCandidate) {
+          if (selectedCandidate.ticket_code) {
+            setTicketCode(selectedCandidate.ticket_code)
+          } else if (selectedJob) {
+            await loadTicketForCandidate(selectedCandidate.id, selectedJob)
+          }
+        }
       }
     } catch (err) {
       console.error('Error loading analysis:', err)
       setAnalysis(null)
     } finally {
       setLoadingAnalysis(false)
+    }
+  }
+
+  const loadTicketForCandidate = async (candidateId: string, jobId: string) => {
+    try {
+      const token = localStorage.getItem('auth_token')
+      if (token) apiClient.setToken(token)
+
+      // Get all tickets for this job
+      const response = await apiClient.get<any[]>(`/tickets/job/${jobId}`)
+      
+      if (response.success && response.data) {
+        // Find ticket for this candidate that hasn't been used
+        const ticket = response.data.find(
+          (t: any) => t.candidate_id === candidateId && !t.is_used
+        )
+        
+        if (ticket) {
+          setTicketCode(ticket.ticket_code)
+        }
+      }
+    } catch (err) {
+      console.error('Error loading ticket:', err)
+      // Silently fail - ticket might not exist yet
     }
   }
 
@@ -233,6 +286,10 @@ export default function CVReportsPage() {
                   ? { ...c, has_analysis: true } 
                   : c
               ))
+              // Automatically fetch ticket after analysis completes
+              if (selectedJob) {
+                await loadTicketForCandidate(selectedCandidate.id, selectedJob)
+              }
               return
             }
           }
@@ -424,11 +481,19 @@ export default function CVReportsPage() {
                           <div className="font-medium text-gray-900">{candidate.full_name}</div>
                           <div className="text-sm text-gray-500">{candidate.email}</div>
                         </div>
-                        {candidate.has_analysis && (
-                          <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full">
-                            ✓ Analyzed
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {candidate.has_analysis && (
+                            <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full">
+                              ✓ Analyzed
+                            </span>
+                          )}
+                          {candidate.ticket_code && (
+                            <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full flex items-center gap-1">
+                              <Ticket className="w-3 h-3" />
+                              Ticket Ready
+                            </span>
+                          )}
+                        </div>
                       </button>
                     ))
                   )}
@@ -480,37 +545,48 @@ export default function CVReportsPage() {
                   )}
                 </Button>
 
-                {/* Generate Ticket Button */}
-                {!ticketCode ? (
-                  <Button
-                    variant="outline"
-                    onClick={createInterviewTicket}
-                    disabled={creatingTicket}
-                  >
-                    {creatingTicket ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                        Creating...
-                      </>
-                    ) : (
-                      <>
-                        <Ticket className="w-4 h-4 mr-2" />
-                        Generate Ticket
-                      </>
-                    )}
-                  </Button>
-                ) : (
-                  <div className="flex items-center gap-2 bg-green-100 px-3 py-2 rounded-lg border border-green-200">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <span className="font-mono font-bold text-green-800">{ticketCode}</span>
-                    <button 
-                      onClick={copyTicket}
-                      className="p-1 hover:bg-green-200 rounded"
-                      title="Copy ticket code"
+                {/* Ticket Display - Show for all screened candidates */}
+                {analysis && (
+                  !ticketCode && !selectedCandidate?.ticket_code ? (
+                    <Button
+                      variant="outline"
+                      onClick={createInterviewTicket}
+                      disabled={creatingTicket}
+                      title="Create interview ticket for this screened candidate (ticket should be auto-generated after screening)"
                     >
-                      <Copy className="w-4 h-4 text-green-600" />
-                    </button>
-                  </div>
+                      {creatingTicket ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                          Creating...
+                        </>
+                      ) : (
+                        <>
+                          <Ticket className="w-4 h-4 mr-2" />
+                          Generate Ticket
+                        </>
+                      )}
+                    </Button>
+                  ) : (
+                    <div className="flex items-center gap-2 bg-green-100 dark:bg-green-900/30 px-3 py-2 rounded-lg border border-green-200 dark:border-green-700">
+                      <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+                      <span className="font-mono font-bold text-green-800 dark:text-green-300">
+                        {ticketCode || selectedCandidate?.ticket_code}
+                      </span>
+                      <button 
+                        onClick={() => {
+                          const code = ticketCode || selectedCandidate?.ticket_code
+                          if (code) {
+                            navigator.clipboard.writeText(code)
+                            alert('Ticket code copied!')
+                          }
+                        }}
+                        className="p-1 hover:bg-green-200 dark:hover:bg-green-800 rounded"
+                        title="Copy ticket code"
+                      >
+                        <Copy className="w-4 h-4 text-green-600 dark:text-green-400" />
+                      </button>
+                    </div>
+                  )
                 )}
                 
                 {analysis && (

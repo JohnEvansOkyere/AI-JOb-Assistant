@@ -16,7 +16,7 @@ import { Card } from '@/components/ui/Card'
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { JobDescription } from '@/types'
-import { Check, Copy } from 'lucide-react'
+import { Check, Copy, ChevronDown } from 'lucide-react'
 
 export default function JobsPage() {
   const router = useRouter()
@@ -25,6 +25,7 @@ export default function JobsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [copiedJobId, setCopiedJobId] = useState<string | null>(null)
+  const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
 
   const handleCopyLink = async (jobId: string) => {
     const url = typeof window !== 'undefined' ? `${window.location.origin}/apply/${jobId}` : ''
@@ -84,6 +85,41 @@ export default function JobsPage() {
 
   const handleRefresh = () => {
     loadJobs()
+  }
+
+  const handleStatusChange = async (jobId: string, newStatus: boolean) => {
+    try {
+      setUpdatingStatus(jobId)
+      setError('')
+      const token = localStorage.getItem('auth_token')
+      if (token) {
+        apiClient.setToken(token)
+      }
+      
+      const response = await apiClient.put<JobDescription>(
+        `/job-descriptions/${jobId}`,
+        { is_active: newStatus }
+      )
+      
+      if (response.success && response.data) {
+        // Update the job in the local state
+        setJobs(prevJobs => 
+          prevJobs.map(job => 
+            job.id === jobId 
+              ? { ...job, is_active: response.data!.is_active }
+              : job
+          )
+        )
+      } else {
+        setError(response.message || 'Failed to update job status')
+      }
+    } catch (err: any) {
+      console.error('Error updating job status:', err)
+      const errorMessage = ApiErrorHandler.getErrorMessage(err)
+      setError(errorMessage)
+    } finally {
+      setUpdatingStatus(null)
+    }
   }
 
   if (authLoading || loading) {
@@ -149,14 +185,29 @@ export default function JobsPage() {
                     <p className="text-sm text-gray-500 dark:text-gray-400">Level: {job.experience_level}</p>
                   )}
                   <div className="space-y-2 pt-2">
-                    <div className="flex items-center justify-between">
-                      <span className={`text-xs px-2 py-1 rounded ${
-                        job.is_active 
-                          ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' 
-                          : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
-                      }`}>
-                        {job.is_active ? 'Active' : 'Inactive'}
-                      </span>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="relative flex-1">
+                        <select
+                          value={job.is_active ? 'active' : 'inactive'}
+                          onChange={(e) => {
+                            const newStatus = e.target.value === 'active'
+                            handleStatusChange(job.id, newStatus)
+                          }}
+                          disabled={updatingStatus === job.id}
+                          className={`w-full text-xs px-3 py-1.5 pr-8 rounded border appearance-none cursor-pointer transition-colors font-medium ${
+                            job.is_active 
+                              ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 border-green-300 dark:border-green-700' 
+                              : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 border-gray-300 dark:border-gray-600'
+                          } ${updatingStatus === job.id ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-primary-500'}`}
+                        >
+                          <option value="active">✓ Active</option>
+                          <option value="inactive">○ Inactive</option>
+                        </select>
+                        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none opacity-60" />
+                      </div>
+                      {updatingStatus === job.id && (
+                        <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">Updating...</span>
+                      )}
                     </div>
                     <div className="flex gap-2 flex-wrap">
                       <Button 

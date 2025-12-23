@@ -5,7 +5,7 @@ Tests for file validation utilities
 import pytest
 from fastapi import HTTPException, status, UploadFile
 from io import BytesIO
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, Mock
 
 from app.utils.file_validation import (
     sanitize_filename,
@@ -185,6 +185,19 @@ class TestValidateFileType:
         assert ext == ".pdf"
 
 
+def _create_upload_file_mock(filename: str, content: bytes, content_type: str, size: int = None):
+    """Helper to create a mock UploadFile with proper attributes"""
+    file_mock = Mock(spec=UploadFile)
+    file_mock.filename = filename
+    file_mock.file = BytesIO(content)
+    file_mock.content_type = content_type
+    file_mock.size = size if size is not None else len(content)
+    file_mock.read = Mock(return_value=content)
+    file_mock.seek = Mock()
+    file_mock.close = Mock()
+    return file_mock
+
+
 @pytest.mark.unit
 @pytest.mark.utils
 @pytest.mark.file_upload
@@ -193,12 +206,12 @@ class TestValidateCVFile:
     
     def test_valid_pdf_cv_passes(self):
         """Test that valid PDF CV passes"""
-        file = UploadFile(
+        file = _create_upload_file_mock(
             filename="resume.pdf",
-            file=BytesIO(b"PDF content")
+            content=b"PDF content",
+            content_type="application/pdf",
+            size=1024
         )
-        file.content_type = "application/pdf"
-        file.size = 1024
         
         filename, size, mime_type = validate_cv_file(file)
         assert filename == "resume.pdf"
@@ -207,12 +220,12 @@ class TestValidateCVFile:
     
     def test_valid_docx_cv_passes(self):
         """Test that valid DOCX CV passes"""
-        file = UploadFile(
+        file = _create_upload_file_mock(
             filename="resume.docx",
-            file=BytesIO(b"DOCX content")
+            content=b"DOCX content",
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            size=2048
         )
-        file.content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        file.size = 2048
         
         filename, size, mime_type = validate_cv_file(file)
         assert ".docx" in filename.lower()
@@ -220,12 +233,12 @@ class TestValidateCVFile:
     
     def test_valid_txt_cv_passes(self):
         """Test that valid TXT CV passes"""
-        file = UploadFile(
+        file = _create_upload_file_mock(
             filename="resume.txt",
-            file=BytesIO(b"Text content")
+            content=b"Text content",
+            content_type="text/plain",
+            size=512
         )
-        file.content_type = "text/plain"
-        file.size = 512
         
         filename, size, mime_type = validate_cv_file(file)
         assert ".txt" in filename.lower()
@@ -233,12 +246,12 @@ class TestValidateCVFile:
     
     def test_invalid_file_type_raises_exception(self):
         """Test that invalid file type raises HTTPException"""
-        file = UploadFile(
+        file = _create_upload_file_mock(
             filename="resume.exe",
-            file=BytesIO(b"Executable content")
+            content=b"Executable content",
+            content_type="application/x-msdownload",
+            size=1024
         )
-        file.content_type = "application/x-msdownload"
-        file.size = 1024
         
         with pytest.raises(HTTPException) as exc_info:
             validate_cv_file(file)
@@ -247,12 +260,12 @@ class TestValidateCVFile:
     
     def test_file_too_large_raises_exception(self):
         """Test that file exceeding size limit raises HTTPException"""
-        file = UploadFile(
+        file = _create_upload_file_mock(
             filename="resume.pdf",
-            file=BytesIO(b"Large content")
+            content=b"Large content",
+            content_type="application/pdf",
+            size=MAX_CV_FILE_SIZE + 1
         )
-        file.content_type = "application/pdf"
-        file.size = MAX_CV_FILE_SIZE + 1
         
         with pytest.raises(HTTPException) as exc_info:
             validate_cv_file(file)
@@ -261,24 +274,26 @@ class TestValidateCVFile:
     
     def test_sanitizes_filename(self):
         """Test that filename is sanitized"""
-        file = UploadFile(
+        file = _create_upload_file_mock(
             filename="../../../etc/passwd.pdf",
-            file=BytesIO(b"PDF content")
+            content=b"PDF content",
+            content_type="application/pdf",
+            size=1024
         )
-        file.content_type = "application/pdf"
-        file.size = 1024
         
         filename, _, _ = validate_cv_file(file)
         assert "../" not in filename
     
     def test_handles_missing_size(self):
         """Test that missing size attribute is handled"""
-        file = UploadFile(
+        file = _create_upload_file_mock(
             filename="resume.pdf",
-            file=BytesIO(b"PDF content")
+            content=b"PDF content",
+            content_type="application/pdf",
+            size=None  # Simulate missing size
         )
-        file.content_type = "application/pdf"
-        # Don't set file.size
+        # Remove size attribute to test missing size handling
+        delattr(file, 'size')
         
         filename, size, mime_type = validate_cv_file(file)
         assert size == 0  # Should return 0 when size is not available
@@ -293,12 +308,12 @@ class TestValidateImageFile:
     
     def test_valid_png_passes(self):
         """Test that valid PNG passes"""
-        file = UploadFile(
+        file = _create_upload_file_mock(
             filename="logo.png",
-            file=BytesIO(b"PNG content")
+            content=b"PNG content",
+            content_type="image/png",
+            size=1024
         )
-        file.content_type = "image/png"
-        file.size = 1024
         
         filename, size, mime_type = validate_image_file(file)
         assert ".png" in filename.lower()
@@ -306,24 +321,24 @@ class TestValidateImageFile:
     
     def test_valid_jpeg_passes(self):
         """Test that valid JPEG passes"""
-        file = UploadFile(
+        file = _create_upload_file_mock(
             filename="logo.jpg",
-            file=BytesIO(b"JPEG content")
+            content=b"JPEG content",
+            content_type="image/jpeg",
+            size=2048
         )
-        file.content_type = "image/jpeg"
-        file.size = 2048
         
         filename, size, mime_type = validate_image_file(file)
         assert mime_type == "image/jpeg"
     
     def test_file_too_large_raises_exception(self):
         """Test that file exceeding size limit raises HTTPException"""
-        file = UploadFile(
+        file = _create_upload_file_mock(
             filename="logo.png",
-            file=BytesIO(b"Large content")
+            content=b"Large content",
+            content_type="image/png",
+            size=MAX_LOGO_FILE_SIZE + 1
         )
-        file.content_type = "image/png"
-        file.size = MAX_LOGO_FILE_SIZE + 1
         
         with pytest.raises(HTTPException) as exc_info:
             validate_image_file(file)
@@ -332,12 +347,12 @@ class TestValidateImageFile:
     
     def test_invalid_file_type_raises_exception(self):
         """Test that invalid file type raises HTTPException"""
-        file = UploadFile(
+        file = _create_upload_file_mock(
             filename="logo.pdf",
-            file=BytesIO(b"PDF content")
+            content=b"PDF content",
+            content_type="application/pdf",
+            size=1024
         )
-        file.content_type = "application/pdf"
-        file.size = 1024
         
         with pytest.raises(HTTPException) as exc_info:
             validate_image_file(file)
@@ -353,12 +368,12 @@ class TestValidatePDFFile:
     
     def test_valid_pdf_passes(self):
         """Test that valid PDF passes"""
-        file = UploadFile(
+        file = _create_upload_file_mock(
             filename="document.pdf",
-            file=BytesIO(b"PDF content")
+            content=b"PDF content",
+            content_type="application/pdf",
+            size=1024
         )
-        file.content_type = "application/pdf"
-        file.size = 1024
         
         filename, size, mime_type = validate_pdf_file(file)
         assert ".pdf" in filename.lower()
@@ -366,12 +381,12 @@ class TestValidatePDFFile:
     
     def test_file_too_large_raises_exception(self):
         """Test that file exceeding size limit raises HTTPException"""
-        file = UploadFile(
+        file = _create_upload_file_mock(
             filename="document.pdf",
-            file=BytesIO(b"Large content")
+            content=b"Large content",
+            content_type="application/pdf",
+            size=MAX_OFFER_LETTER_SIZE + 1
         )
-        file.content_type = "application/pdf"
-        file.size = MAX_OFFER_LETTER_SIZE + 1
         
         with pytest.raises(HTTPException) as exc_info:
             validate_pdf_file(file)
@@ -380,12 +395,12 @@ class TestValidatePDFFile:
     
     def test_invalid_file_type_raises_exception(self):
         """Test that invalid file type raises HTTPException"""
-        file = UploadFile(
+        file = _create_upload_file_mock(
             filename="document.jpg",
-            file=BytesIO(b"JPEG content")
+            content=b"JPEG content",
+            content_type="image/jpeg",
+            size=1024
         )
-        file.content_type = "image/jpeg"
-        file.size = 1024
         
         with pytest.raises(HTTPException) as exc_info:
             validate_pdf_file(file)

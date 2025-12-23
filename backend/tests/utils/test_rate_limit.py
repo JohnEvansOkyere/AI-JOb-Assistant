@@ -47,7 +47,12 @@ class TestGetUserId:
     def test_handles_missing_state_attribute(self):
         """Test that function handles missing state attribute gracefully"""
         request = MagicMock(spec=Request)
-        request.state = MagicMock()
+        # Create a mock state that doesn't have user_id attribute
+        mock_state = MagicMock()
+        # Remove user_id from the mock's attributes
+        if hasattr(mock_state, 'user_id'):
+            delattr(mock_state, 'user_id')
+        request.state = mock_state
         
         # Mock get_remote_address
         with patch('app.utils.rate_limit.get_remote_address', return_value="127.0.0.1"):
@@ -105,56 +110,58 @@ class TestRateLimitDecorators:
 
 @pytest.mark.unit
 @pytest.mark.utils
-@pytest.mark.asyncio
 class TestRateLimitHandler:
     """Tests for rate_limit_handler function"""
     
-    async def test_handles_rate_limit_exceeded(self):
+    def test_handles_rate_limit_exceeded(self):
         """Test that rate limit exceeded error is handled correctly"""
         request = MagicMock(spec=Request)
         request.url.path = "/auth/login"
         request.method = "POST"
         
-        exc = RateLimitExceeded("3 per 1 minute")
+        # Create a mock RateLimitExceeded with proper structure
+        exc = MagicMock(spec=RateLimitExceeded)
+        exc.detail = "3 per 1 minute"
         
         with patch('app.utils.rate_limit.get_remote_address', return_value="127.0.0.1"):
-            response = await rate_limit_handler(request, exc)
+            response = rate_limit_handler(request, exc)
         
         assert response.status_code == 429
         content = response.body.decode()
         assert "rate limit exceeded" in content.lower()
         assert "retry" in content.lower()
     
-    async def test_auth_endpoint_retry_time(self):
+    def test_auth_endpoint_retry_time(self):
         """Test that auth endpoints have longer retry time"""
         request = MagicMock(spec=Request)
         request.url.path = "/auth/login"
         request.method = "POST"
         
-        exc = RateLimitExceeded("3 per 1 minute")
+        exc = MagicMock(spec=RateLimitExceeded)
+        exc.detail = "3 per 1 minute"
         
         with patch('app.utils.rate_limit.get_remote_address', return_value="127.0.0.1"):
-            with patch('app.utils.rate_limit.settings.rate_limit_auth_retry_hours', 5):
-                response = await rate_limit_handler(request, exc)
+            with patch.object(settings, 'rate_limit_auth_retry_hours', 5):
+                response = rate_limit_handler(request, exc)
         
         assert response.status_code == 429
         content = response.body.decode()
         assert "5" in content or "hour" in content.lower()
         assert "Retry-After" in response.headers
     
-    async def test_non_auth_endpoint_default_retry_time(self):
+    def test_non_auth_endpoint_default_retry_time(self):
         """Test that non-auth endpoints have default retry time"""
         request = MagicMock(spec=Request)
         request.url.path = "/api/jobs"
         request.method = "GET"
         
-        exc = RateLimitExceeded("100 per 1 minute")
+        exc = MagicMock(spec=RateLimitExceeded)
+        exc.detail = "100 per 1 minute"
         
         with patch('app.utils.rate_limit.get_remote_address', return_value="127.0.0.1"):
-            response = await rate_limit_handler(request, exc)
+            response = rate_limit_handler(request, exc)
         
         assert response.status_code == 429
-        # Default retry should be 1 minute (3600 seconds / 60 = 60 minutes in hours... wait that's wrong)
-        # Actually default is 60 seconds = 1 minute = 0.0167 hours, so it should say 0 or 1 hour
+        # Default retry should be 1 minute (60 seconds)
         assert "Retry-After" in response.headers
 

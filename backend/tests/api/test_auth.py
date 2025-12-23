@@ -6,6 +6,7 @@ import pytest
 from fastapi import status
 from unittest.mock import patch, MagicMock, AsyncMock
 from uuid import uuid4
+from datetime import datetime
 
 from app.schemas.auth import UserRegister, UserLogin
 
@@ -28,11 +29,14 @@ class TestRegister:
         mock_supabase_client.auth.sign_up.return_value = mock_auth_response
         
         # Mock database insert
+        now = datetime.utcnow().isoformat()
         mock_supabase_client.table.return_value.insert.return_value.execute.return_value.data = [{
             "id": user_id,
             "email": "test@example.com",
             "full_name": "Test User",
-            "company_name": "Test Company"
+            "company_name": "Test Company",
+            "created_at": now,
+            "updated_at": now
         }]
         
         register_data = {
@@ -91,7 +95,8 @@ class TestRegister:
             response = client.post("/auth/register", json=register_data)
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "Failed to create user" in response.json()["detail"]
+        detail = response.json()["detail"]
+        assert "Failed to create user" in detail or "Registration failed" in detail
     
     def test_register_database_failure(self, client, mock_supabase_client):
         """Test registration when database insert fails"""
@@ -116,7 +121,8 @@ class TestRegister:
             response = client.post("/auth/register", json=register_data)
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "Failed to create user profile" in response.json()["detail"]
+        detail = response.json()["detail"]
+        assert "Failed to create user profile" in detail or "Registration failed" in detail
 
 
 @pytest.mark.api

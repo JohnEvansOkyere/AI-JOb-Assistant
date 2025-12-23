@@ -98,6 +98,12 @@ class Settings(BaseSettings):
     rate_limit_ai: str = "10/hour"  # AI analysis endpoints (expensive!)
     rate_limit_public: str = "20/hour"  # Public application forms
     
+    # Sentry Error Tracking
+    sentry_dsn: Optional[str] = None  # Get from https://sentry.io
+    sentry_environment: Optional[str] = None  # production, staging, development (defaults to app_env)
+    sentry_traces_sample_rate: float = 1.0  # 0.0 to 1.0 (1.0 = 100% of transactions, lower for high traffic)
+    sentry_profiles_sample_rate: float = 1.0  # Performance profiling sample rate
+    
     class Config:
         env_file = ".env"
         case_sensitive = False

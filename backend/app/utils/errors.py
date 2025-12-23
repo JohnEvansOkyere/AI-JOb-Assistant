@@ -7,6 +7,7 @@ from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 import structlog
+import sentry_sdk
 
 logger = structlog.get_logger()
 
@@ -91,6 +92,25 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 async def general_exception_handler(request: Request, exc: Exception):
     """Handle general exceptions"""
+    # Capture exception in Sentry with context
+    with sentry_sdk.push_scope() as scope:
+        # Add request context
+        scope.set_context("request", {
+            "url": str(request.url),
+            "method": request.method,
+            "path": request.url.path,
+            "query_params": str(request.query_params),
+        })
+        
+        # Add user info if available (non-sensitive)
+        if hasattr(request.state, "user_id"):
+            scope.set_user({
+                "id": str(request.state.user_id),
+            })
+        
+        # Capture the exception
+        sentry_sdk.capture_exception(exc)
+    
     logger.error(
         "Unhandled exception",
         path=request.url.path,

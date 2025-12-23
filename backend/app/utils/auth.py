@@ -12,6 +12,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.config import settings
 from app.database import db
 import structlog
+import sentry_sdk
 
 logger = structlog.get_logger()
 
@@ -76,7 +77,15 @@ async def get_current_user(
         response = db.client.table("users").select("*").eq("id", user_id).execute()
         if not response.data:
             raise credentials_exception
-        return response.data[0]
+        user = response.data[0]
+        
+        # Add user context to Sentry (non-sensitive info only)
+        sentry_sdk.set_user({
+            "id": str(user_id),
+            "email": user.get("email"),  # Email is generally safe to log
+        })
+        
+        return user
     except Exception as e:
         logger.error("Error fetching user", error=str(e))
         raise credentials_exception

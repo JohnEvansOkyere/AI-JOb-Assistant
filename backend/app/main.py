@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from app.config import settings
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
 from app.api import (
     auth_router,
     health_router,
@@ -58,6 +60,29 @@ structlog.configure(
 )
 
 logger = structlog.get_logger()
+
+# Initialize Sentry Error Tracking (before creating FastAPI app)
+if settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.sentry_environment or settings.app_env,
+        traces_sample_rate=settings.sentry_traces_sample_rate,
+        profiles_sample_rate=settings.sentry_profiles_sample_rate,
+        integrations=[
+            FastApiIntegration(),
+        ],
+        # Don't send sensitive data by default
+        send_default_pii=False,  # Set to True if you want to send user info
+        # Filter out expected client errors
+        ignore_errors=[
+            RequestValidationError,  # These are client validation errors, not server errors
+        ],
+        # Set release version (optional, useful for tracking which code version caused errors)
+        # release="myapp@1.0.0",  # Uncomment and set your app version
+    )
+    logger.info("Sentry error tracking initialized", environment=settings.sentry_environment or settings.app_env)
+else:
+    logger.info("Sentry error tracking disabled (no SENTRY_DSN configured)")
 
 # Initialize FastAPI app
 app = FastAPI(

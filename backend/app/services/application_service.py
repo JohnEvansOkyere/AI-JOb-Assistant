@@ -84,17 +84,36 @@ class ApplicationService:
             application_id = str(uuid.uuid4())
             
             # Check if application already exists (UNIQUE constraint: job_description_id, candidate_id)
-            existing = db.service_client.table("job_applications").select("id").eq(
+            # Fetch full record so API response validation has all required fields
+            existing = db.service_client.table("job_applications").select("*").eq(
                 "job_description_id", str(application_data.job_description_id)
             ).eq("candidate_id", str(candidate_id)).execute()
             
             if existing.data:
-                logger.info("Application already exists", 
-                           application_id=existing.data[0]["id"],
-                           job_id=str(application_data.job_description_id),
-                           candidate_id=str(candidate_id))
-                # Return existing application
-                return existing.data[0]
+                record = existing.data[0]
+                
+                # Ensure timestamps exist for Pydantic response model
+                if "created_at" not in record or record.get("created_at") is None:
+                    logger.warning(
+                        "created_at missing from existing application record, setting explicitly",
+                        application_id=record.get("id"),
+                    )
+                    record["created_at"] = datetime.utcnow().isoformat()
+                
+                if "updated_at" not in record or record.get("updated_at") is None:
+                    logger.warning(
+                        "updated_at missing from existing application record, setting explicitly",
+                        application_id=record.get("id"),
+                    )
+                    record["updated_at"] = datetime.utcnow().isoformat()
+                
+                logger.info(
+                    "Application already exists, returning existing record",
+                    application_id=record.get("id"),
+                    job_id=str(application_data.job_description_id),
+                    candidate_id=str(candidate_id),
+                )
+                return record
             
             application_dict = {
                 "id": application_id,

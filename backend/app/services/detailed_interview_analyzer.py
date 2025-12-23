@@ -187,6 +187,10 @@ class DetailedInterviewAnalyzer:
             interview_data, job_description, cv_text, formatted_qa
         )
 
+        # Try with current provider, fallback to others if API errors occur
+        last_error = None
+        providers_tried = []
+        
         try:
             analysis_text = await self.provider.generate_completion(
                 prompt=prompt,
@@ -208,8 +212,82 @@ class DetailedInterviewAnalyzer:
             return analysis
 
         except Exception as e:
-            logger.error("AI analysis failed", error=str(e))
-            # Return a basic analysis structure
+            last_error = e
+            error_str = str(e)
+            
+            # Check if it's an API error that might be provider-specific (400, 401, 403, 429, model errors, etc.)
+            is_api_error = any(indicator in error_str for indicator in [
+                "400", "401", "403", "429", 
+                "Invalid API", "invalid_api_key", "Invalid API Key",
+                "model_decommissioned", "model not found", "model_not_found",
+                "decommissioned", "not supported", "not found for API"
+            ])
+            
+            if is_api_error:
+                logger.warning(
+                    "Provider API error detected, trying fallback providers",
+                    error=error_str,
+                    current_provider=getattr(self.provider, '__class__', {}).__name__ if self.provider else "unknown"
+                )
+                
+                # Get available providers and try in priority order: openai -> grok -> groq -> gemini
+                available_providers = AIProviderFactory.get_available_providers()
+                priority_order = ["openai", "grok", "groq", "gemini"]
+                # Reorder available providers according to priority
+                ordered_providers = [p for p in priority_order if p in available_providers]
+                
+                current_provider_name = None
+                
+                # Determine current provider name
+                provider_class_name = self.provider.__class__.__name__ if self.provider else ""
+                if "OpenAI" in provider_class_name:
+                    current_provider_name = "openai"
+                elif "Grok" in provider_class_name:
+                    current_provider_name = "grok"
+                elif "Groq" in provider_class_name:
+                    current_provider_name = "groq"
+                elif "Gemini" in provider_class_name:
+                    current_provider_name = "gemini"
+                
+                # Try other available providers in priority order
+                for provider_name in ordered_providers:
+                    if provider_name != current_provider_name:
+                        try:
+                            logger.info(f"Trying fallback provider: {provider_name}")
+                            self.provider = AIProviderFactory.create_provider(provider_name)
+                            providers_tried.append(provider_name)
+                            
+                            analysis_text = await self.provider.generate_completion(
+                                prompt=prompt,
+                                system_prompt=self.prompts.COMPREHENSIVE_ANALYSIS_SYSTEM_PROMPT,
+                                max_tokens=4000,
+                                temperature=0.4,
+                            )
+                            
+                            # Success with fallback provider
+                            logger.info(f"Successfully used fallback provider: {provider_name}")
+                            analysis = self._parse_json_response(analysis_text)
+                            analysis["metadata"] = {
+                                "total_questions": len(qa_pairs),
+                                "total_responses": sum(1 for qa in qa_pairs if qa["response"] != "No response"),
+                                "average_response_length": self._calculate_avg_response_length(qa_pairs),
+                            }
+                            return analysis
+                            
+                        except Exception as fallback_error:
+                            logger.warning(
+                                f"Fallback provider {provider_name} also failed",
+                                error=str(fallback_error)
+                            )
+                            last_error = fallback_error
+                            continue
+            
+            # All providers failed or it's not an API error - return fallback
+            logger.error(
+                "AI analysis failed with all providers",
+                error=str(last_error),
+                providers_tried=providers_tried
+            )
             return self._get_fallback_analysis(qa_pairs)
 
     def _parse_json_response(self, response_text: str) -> Dict[str, Any]:

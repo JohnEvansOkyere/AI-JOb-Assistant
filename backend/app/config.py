@@ -28,12 +28,22 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     
     groq_api_key: Optional[str] = None
-    groq_model: str = "llama-3.1-70b-versatile"
+    groq_model: str = "mixtral-8x7b-32768"  # Mixtral - fast and high quality
+    # Other available Groq models:
+    # - "mixtral-8x22b-instruct-32768" (larger, better quality, slower)
+    # - "llama-3.3-70b-versatile" (Llama - good alternative)
+    # - "llama-3.1-8b-instant" (Llama - very fast, smaller)
+    # - "gemma-7b-it" (Google Gemma)
+    # - "gemma2-9b-it" (Google Gemma2 - newer)
     
     gemini_api_key: Optional[str] = None
-    gemini_model: str = "gemini-1.5-flash"
+    gemini_model: str = "gemini-pro"  # Updated to use stable model name
     
-    # Primary AI provider (openai, groq, gemini)
+    # Grok (x.ai) - OpenAI compatible API
+    grok_api_key: Optional[str] = None
+    grok_model: str = "grok-4-latest"
+    
+    # Primary AI provider (openai, grok, groq, gemini)
     primary_ai_provider: str = "openai"
     
     # Voice Services

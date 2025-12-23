@@ -286,7 +286,17 @@ class GeminiProvider(AIProvider):
         try:
             import google.generativeai as genai
             genai.configure(api_key=settings.gemini_api_key)
-            self.model = genai.GenerativeModel(settings.gemini_model)
+            # Try the configured model name, fallback to gemini-pro if it fails
+            model_name = settings.gemini_model
+            try:
+                self.model = genai.GenerativeModel(model_name)
+                # Test if model is accessible
+                self.model_name = model_name
+            except Exception:
+                # Fallback to gemini-pro if the configured model doesn't work
+                logger.warning(f"Model {model_name} not available, falling back to gemini-pro")
+                self.model = genai.GenerativeModel("gemini-pro")
+                self.model_name = "gemini-pro"
         except ImportError:
             raise ImportError("Google Generative AI package not installed. Run: pip install google-generativeai")
     
@@ -313,7 +323,31 @@ class GeminiProvider(AIProvider):
             
             return response.text
         except Exception as e:
-            logger.error("Gemini API error", error=str(e))
+            # If model not found error, try to reinitialize with gemini-pro as fallback
+            error_str = str(e)
+            if "404" in error_str and "not found" in error_str.lower() and self.model_name != "gemini-pro":
+                logger.warning(
+                    f"Model {self.model_name} not available, falling back to gemini-pro",
+                    original_error=error_str
+                )
+                try:
+                    import google.generativeai as genai
+                    fallback_model = genai.GenerativeModel("gemini-pro")
+                    response = fallback_model.generate_content(
+                        full_prompt,
+                        generation_config={
+                            "max_output_tokens": max_tokens,
+                            "temperature": temperature
+                        }
+                    )
+                    # Update the model for future use
+                    self.model = fallback_model
+                    self.model_name = "gemini-pro"
+                    return response.text
+                except Exception as fallback_error:
+                    logger.error("Gemini fallback model also failed", error=str(fallback_error))
+                    raise
+            logger.error("Gemini API error", error=error_str)
             raise
     
     async def generate_streaming(
@@ -350,6 +384,112 @@ class GeminiProvider(AIProvider):
         return len(text) // 4
 
 
+class GrokProvider(AIProvider):
+    """Grok (x.ai) provider - OpenAI compatible API"""
+    
+    def __init__(self):
+        if not settings.grok_api_key:
+            raise ValueError("Grok API key not configured")
+        try:
+            from openai import OpenAI
+            import httpx
+            import os
+            
+            # Create a custom httpx client that explicitly doesn't use proxies
+            original_proxies = {}
+            proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy']
+            
+            # Temporarily remove proxy environment variables
+            for var in proxy_vars:
+                if var in os.environ:
+                    original_proxies[var] = os.environ.pop(var)
+            
+            try:
+                # Create httpx client without reading proxy environment variables
+                http_client = httpx.Client(
+                    timeout=60.0,
+                    follow_redirects=True,
+                    trust_env=False  # Don't read proxy env vars
+                )
+                
+                # Initialize OpenAI client with Grok's API endpoint
+                # Grok uses OpenAI-compatible API at api.x.ai
+                self.client = OpenAI(
+                    api_key=settings.grok_api_key,
+                    base_url="https://api.x.ai/v1",
+                    http_client=http_client
+                )
+                self.model = settings.grok_model
+            finally:
+                # Restore proxy environment variables
+                for var, value in original_proxies.items():
+                    os.environ[var] = value
+        except ImportError:
+            raise ImportError("OpenAI package not installed. Run: pip install openai")
+        except Exception as e:
+            logger.error("Failed to initialize Grok client", error=str(e))
+            raise ValueError(f"Failed to initialize Grok client: {str(e)}")
+    
+    async def generate_completion(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        temperature: float = 0.7
+    ) -> str:
+        """Generate completion using Grok"""
+        try:
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+            
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature
+            )
+            
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error("Grok API error", error=str(e))
+            raise
+    
+    async def generate_streaming(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        temperature: float = 0.7
+    ):
+        """Generate streaming response"""
+        try:
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+            
+            stream = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stream=True
+            )
+            
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        except Exception as e:
+            logger.error("Grok streaming error", error=str(e))
+            raise
+    
+    def get_token_count(self, text: str) -> int:
+        """Estimate token count (rough: ~4 chars per token)"""
+        return len(text) // 4
+
+
 class AIProviderFactory:
     """Factory for creating AI providers"""
     
@@ -359,25 +499,67 @@ class AIProviderFactory:
         Create an AI provider instance
         
         Args:
-            provider_name: Name of provider (openai, groq, gemini). 
-                         If None, uses primary_ai_provider from settings
+            provider_name: Name of provider (openai, grok, groq, gemini). 
+                         If None, uses primary_ai_provider from settings.
+                         If the requested provider is not available, falls back to first available provider.
         
         Returns:
             AIProvider instance
         
         Raises:
-            ValueError: If provider is not configured or invalid
+            ValueError: If no providers are configured or invalid provider name
         """
-        provider_name = provider_name or settings.primary_ai_provider
+        available_providers = AIProviderFactory.get_available_providers()
         
-        if provider_name == "openai":
-            return OpenAIProvider()
-        elif provider_name == "groq":
-            return GroqProvider()
-        elif provider_name == "gemini":
-            return GeminiProvider()
-        else:
-            raise ValueError(f"Unknown AI provider: {provider_name}")
+        if not available_providers:
+            raise ValueError("No AI providers are configured. Please set at least one API key (OPENAI_API_KEY, GROK_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY).")
+        
+        # Use requested provider or primary provider from settings
+        requested_provider = provider_name or settings.primary_ai_provider
+        
+        # Build list of providers to try: requested first, then available ones
+        providers_to_try = []
+        if requested_provider in available_providers:
+            providers_to_try.append(requested_provider)
+        # Add other available providers as fallbacks
+        for provider in available_providers:
+            if provider != requested_provider:
+                providers_to_try.append(provider)
+        
+        # Try each provider until one successfully instantiates
+        last_error = None
+        for provider_name in providers_to_try:
+            try:
+                if provider_name == "openai":
+                    return OpenAIProvider()
+                elif provider_name == "grok":
+                    return GrokProvider()
+                elif provider_name == "groq":
+                    return GroqProvider()
+                elif provider_name == "gemini":
+                    return GeminiProvider()
+                else:
+                    raise ValueError(f"Unknown AI provider: {provider_name}")
+            except (ValueError, ImportError) as e:
+                # Provider failed to instantiate (missing package, missing API key, etc.)
+                last_error = e
+                if provider_name != providers_to_try[-1]:  # Not the last provider to try
+                    logger.warning(
+                        "Provider failed to initialize, trying next available",
+                        provider=provider_name,
+                        error=str(e),
+                        next_providers=providers_to_try[providers_to_try.index(provider_name) + 1:]
+                    )
+                continue
+        
+        # All providers failed
+        error_msg = f"Failed to initialize any AI provider. Last error: {str(last_error)}"
+        logger.error(
+            "All AI providers failed to initialize",
+            available_providers=available_providers,
+            last_error=str(last_error)
+        )
+        raise ValueError(error_msg)
     
     @staticmethod
     def get_available_providers() -> List[str]:
@@ -386,6 +568,8 @@ class AIProviderFactory:
         
         if settings.openai_api_key:
             available.append("openai")
+        if settings.grok_api_key:
+            available.append("grok")
         if settings.groq_api_key:
             available.append("groq")
         if settings.gemini_api_key:

@@ -38,6 +38,7 @@ from app.utils.errors import (
 from app.utils.rate_limit import limiter, rate_limit_handler
 from app.utils.security_headers import SecurityHeadersMiddleware
 from app.utils.env_validation import validate_environment, EnvironmentValidationError
+from app.ai.providers import AIProviderFactory
 from slowapi.errors import RateLimitExceeded
 import structlog
 
@@ -104,6 +105,40 @@ async def startup_event():
         # For development, we'll log and continue
         if settings.app_env == "production":
             raise
+    
+    # Initialize AI model/provider
+    try:
+        available_providers = AIProviderFactory.get_available_providers()
+        if available_providers:
+            primary_provider = settings.primary_ai_provider
+            # Sort available providers by priority for logging
+            priority_order = ["openai", "grok", "groq", "gemini"]
+            ordered_available = [p for p in priority_order if p in available_providers]
+            
+            if primary_provider in available_providers:
+                # Try to create the provider to verify it's properly configured
+                provider = AIProviderFactory.create_provider(primary_provider)
+                model_name = getattr(provider, 'model', 'unknown')
+                logger.info(
+                    "AI model initialized",
+                    provider=primary_provider,
+                    model=model_name,
+                    available_providers=", ".join(ordered_available)
+                )
+            else:
+                logger.warning(
+                    "AI model initialization skipped - primary provider not available",
+                    primary_provider=primary_provider,
+                    available_providers=", ".join(available_providers)
+                )
+        else:
+            logger.warning("AI model initialization skipped - no API keys configured")
+    except Exception as e:
+        logger.warning(
+            "AI model initialization failed",
+            error=str(e),
+            provider=settings.primary_ai_provider
+        )
 
 
 @app.on_event("shutdown")

@@ -85,26 +85,33 @@ async def upload_cv(
                 )
         except Exception as e:
             error_str = str(e)
-            os.remove(temp_file_path)
             
             # Handle duplicate file gracefully (409 Conflict)
             if "409" in error_str or "duplicate" in error_str.lower() or "already exists" in error_str.lower():
-                logger.info("CV file already exists in storage, using existing file", 
-                           storage_path=storage_path, 
-                           bucket=bucket_name)
+                logger.info(
+                    "CV file already exists in storage, using existing file",
+                    storage_path=storage_path,
+                    bucket=bucket_name,
+                )
                 # File already exists, continue with the existing file
                 # No need to raise an error - we'll use the existing file path
             elif "bucket not found" in error_str.lower() or "404" in error_str:
+                # For real errors, clean up the temp file before raising
+                if os.path.exists(temp_file_path):
+                    os.remove(temp_file_path)
                 logger.error("Error uploading to storage - bucket not found", error=error_str, bucket=bucket_name)
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Storage bucket '{bucket_name}' not found. Please create the bucket in Supabase Storage. See documentation for setup instructions."
+                    detail=f"Storage bucket '{bucket_name}' not found. Please create the bucket in Supabase Storage. See documentation for setup instructions.",
                 )
             else:
+                # For other upload errors, clean up and surface the error
+                if os.path.exists(temp_file_path):
+                    os.remove(temp_file_path)
                 logger.error("Error uploading to storage", error=error_str, bucket=bucket_name)
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Failed to upload file to storage: {error_str}"
+                    detail=f"Failed to upload file to storage: {error_str}",
                 )
         
         # Parse CV content
@@ -116,8 +123,9 @@ async def upload_cv(
             parsed_text = ""
             parsed_json = None
         
-        # Clean up temp file
-        os.remove(temp_file_path)
+        # Clean up temp file (only if it still exists)
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
         
         # Create CV record
         cv = await CVService.upload_cv(

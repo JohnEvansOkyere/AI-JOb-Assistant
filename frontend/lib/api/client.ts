@@ -6,8 +6,10 @@
 import { ApiErrorHandler } from './error-handler'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-const DEFAULT_TIMEOUT = 30000 // 30 seconds
-const DEFAULT_MAX_RETRIES = 3
+// Increase default timeout to better support long-running operations like CV screening
+const DEFAULT_TIMEOUT = 60000 // 60 seconds
+// Slightly reduce retries so we don't wait excessively long on repeated timeouts
+const DEFAULT_MAX_RETRIES = 2
 const DEFAULT_RETRY_DELAY = 1000 // 1 second base delay
 
 export interface ApiResponse<T> {

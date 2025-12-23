@@ -23,18 +23,22 @@ export function ThemeToggle({ variant = 'icon', className = '' }: ThemeTogglePro
   }, [])
 
   // During SSR, return a placeholder to avoid hydration mismatch
+  // Use suppressHydrationWarning since this component intentionally differs between server/client
+  // and browser extensions may modify the DOM
   if (!mounted) {
     return (
       <button
         className={`p-2 rounded-lg ${className}`}
         aria-label="Theme toggle"
         disabled
+        suppressHydrationWarning
       >
-        <Moon className="w-5 h-5 text-gray-400" />
+        <Moon className="w-5 h-5 text-gray-400" suppressHydrationWarning />
       </button>
     )
   }
 
+  // Safe to call useTheme after mounted check
   const { theme, toggleTheme } = useTheme()
 
   if (variant === 'icon') {

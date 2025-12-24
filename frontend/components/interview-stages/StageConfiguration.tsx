@@ -40,16 +40,17 @@ export function StageConfiguration({ jobId, onStagesConfigured }: StageConfigura
   const [showCustomBuilder, setShowCustomBuilder] = useState(false)
 
   useEffect(() => {
+    // Set token once on mount
+    const token = localStorage.getItem('auth_token')
+    if (token) {
+      apiClient.setToken(token)
+    }
     loadTemplates()
     loadExistingStages()
   }, [jobId])
 
   const loadTemplates = async () => {
     try {
-      const token = localStorage.getItem('auth_token')
-      if (token) {
-        apiClient.setToken(token)
-      }
       const response = await apiClient.get('/interview-stages/templates')
       if (response.success && response.data) {
         setTemplates(response.data)
@@ -62,18 +63,19 @@ export function StageConfiguration({ jobId, onStagesConfigured }: StageConfigura
   const loadExistingStages = async () => {
     try {
       setLoading(true)
-      const token = localStorage.getItem('auth_token')
-      if (token) {
-        apiClient.setToken(token)
-      }
       const response = await apiClient.get(`/interview-stages/jobs/${jobId}/stages`)
-      if (response.success && response.data) {
+      if (response.success && response.data && response.data.length > 0) {
         setStages(response.data)
-        setShowCustomBuilder(response.data.length > 0)
+        setShowCustomBuilder(true) // Show custom builder when stages exist
+      } else {
+        // No stages configured yet - show templates
+        setStages([])
+        setShowCustomBuilder(false)
       }
     } catch (err: any) {
       // No stages configured yet
       setStages([])
+      setShowCustomBuilder(false)
     } finally {
       setLoading(false)
     }
@@ -85,6 +87,7 @@ export function StageConfiguration({ jobId, onStagesConfigured }: StageConfigura
       setError('')
       setSuccess('')
       
+      // Ensure token is set
       const token = localStorage.getItem('auth_token')
       if (token) {
         apiClient.setToken(token)
@@ -155,28 +158,42 @@ export function StageConfiguration({ jobId, onStagesConfigured }: StageConfigura
         return
       }
 
+      // Ensure token is set
       const token = localStorage.getItem('auth_token')
-      if (token) {
-        apiClient.setToken(token)
+      if (!token) {
+        setError('Authentication required. Please log in again.')
+        return
       }
+      apiClient.setToken(token)
 
       // Check if we're updating existing stages or creating new ones
       const hasExistingStages = stages.some(s => s.id)
       
       if (hasExistingStages) {
         // Update existing stages individually
-        const updatePromises = stages.map(async (stage) => {
-          if (stage.id) {
-            return apiClient.put(`/interview-stages/stages/${stage.id}`, {
-              stage_name: stage.stage_name,
-              stage_type: stage.stage_type,
-              is_required: stage.is_required,
-              order_index: stage.order_index,
-            })
-          }
-        })
+        const updatePromises = stages
+          .filter(stage => stage.id) // Only stages with IDs
+          .map(async (stage) => {
+            try {
+              return await apiClient.put(`/interview-stages/stages/${stage.id}`, {
+                stage_name: stage.stage_name,
+                stage_type: stage.stage_type,
+                is_required: stage.is_required,
+                order_index: stage.order_index,
+              })
+            } catch (err: any) {
+              console.error(`Error updating stage ${stage.id}:`, err)
+              throw err
+            }
+          })
         
-        await Promise.all(updatePromises.filter(Boolean))
+        const results = await Promise.all(updatePromises)
+        // Check if any updates failed
+        const failed = results.filter(r => !r.success)
+        if (failed.length > 0) {
+          setError(`Failed to update ${failed.length} stage(s)`)
+          return
+        }
         setSuccess('Stages updated successfully')
       } else {
         // Create new stages
@@ -241,7 +258,7 @@ export function StageConfiguration({ jobId, onStagesConfigured }: StageConfigura
           </div>
         )}
 
-        {stages.length === 0 && !showCustomBuilder ? (
+        {!showCustomBuilder ? (
           <div className="space-y-4">
             <div>
               <h3 className="text-md font-medium text-gray-900 dark:text-white mb-3">
@@ -297,16 +314,30 @@ export function StageConfiguration({ jobId, onStagesConfigured }: StageConfigura
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-md font-medium text-gray-900 dark:text-white">
-                Current Stages ({stages.length})
+                {stages.length > 0 ? `Current Stages (${stages.length})` : 'Custom Stages'}
               </h3>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleAddStage}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Add Stage
-              </Button>
+              <div className="flex gap-2">
+                {stages.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setStages([])
+                      setShowCustomBuilder(false)
+                    }}
+                  >
+                    Change Template
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddStage}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Stage
+                </Button>
+              </div>
             </div>
 
             <div className="space-y-3">

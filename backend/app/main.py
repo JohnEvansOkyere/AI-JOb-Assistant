@@ -30,6 +30,7 @@ from app.api import (
     email_templates_router,
     branding_router,
     calendar_router,
+    interview_stages_router,
 )
 from app.utils.errors import (
     app_exception_handler,
@@ -206,6 +207,7 @@ app.include_router(emails_router)
 app.include_router(email_templates_router)
 app.include_router(branding_router)
 app.include_router(calendar_router)
+app.include_router(interview_stages_router)
 
 if __name__ == "__main__":
     import uvicorn

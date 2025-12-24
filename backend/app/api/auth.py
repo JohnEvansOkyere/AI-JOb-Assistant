@@ -32,20 +32,24 @@ async def register(request: Request, user_data: UserRegister):
     """
     try:
         # Create user in Supabase Auth
+        # Supabase handles email confirmation automatically if enabled
         auth_response = db.client.auth.sign_up({
             "email": user_data.email,
             "password": user_data.password,
         })
         
+        # Check if user was created successfully
         if not auth_response.user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to create user"
+                detail="Failed to create user account"
             )
+        
+        user_id = auth_response.user.id
         
         # Create user profile in public.users table
         user_profile = {
-            "id": auth_response.user.id,
+            "id": user_id,
             "email": user_data.email,
             "full_name": user_data.full_name,
             "company_name": user_data.company_name
@@ -59,20 +63,45 @@ async def register(request: Request, user_data: UserRegister):
                 detail="Failed to create user profile"
             )
         
-        logger.info("User registered", user_id=auth_response.user.id, email=user_data.email)
+        logger.info("User registered", user_id=user_id, email=user_data.email)
+        
+        # Default templates will be created lazily when user first accesses templates
+        # This ensures registration is fast and templates are created when needed
+        
+        # Return success - Supabase handles email confirmation automatically
+        message = "User registered successfully. Please check your email to confirm your account."
         
         return Response(
             success=True,
-            message="User registered successfully",
+            message=message,
             data=response.data[0]
         )
         
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
-        logger.error("Registration error", error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Registration failed: {str(e)}"
-        )
+        error_message = str(e)
+        logger.error("Registration error", error=error_message, email=user_data.email)
+        
+        # Provide helpful error messages for common issues
+        if "already registered" in error_message.lower() or "user already exists" in error_message.lower() or "already been registered" in error_message.lower():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An account with this email already exists"
+            )
+        elif "password" in error_message.lower() and ("weak" in error_message.lower() or "requirements" in error_message.lower()):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Password does not meet requirements. Please use a stronger password."
+            )
+        else:
+            # Generic error message for security (don't leak internal details)
+            # Note: Email confirmation errors are handled by Supabase, not our application
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Registration failed. Please check your information and try again."
+            )
 
 
 @router.post("/login", response_model=Response[Token])

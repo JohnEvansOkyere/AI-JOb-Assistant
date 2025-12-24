@@ -13,7 +13,7 @@ import { apiClient } from '@/lib/api/client'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
-import { ArrowLeft, Plus, Edit, Trash2, Eye, FileText, Mail, XCircle, CheckCircle, Gift } from 'lucide-react'
+import { ArrowLeft, Plus, Edit, Trash2, Eye, FileText, Mail, XCircle, CheckCircle, Gift, Inbox, UserX, MessageSquare } from 'lucide-react'
 
 interface EmailTemplate {
   id: string
@@ -21,7 +21,7 @@ interface EmailTemplate {
   subject: string
   body_html: string
   body_text?: string
-  template_type: 'interview_invitation' | 'acceptance' | 'rejection' | 'offer_letter' | 'custom'
+  template_type: 'interview_invitation' | 'acceptance' | 'rejection' | 'cv_rejection' | 'interview_rejection' | 'offer_letter' | 'application_received' | 'custom'
   available_variables?: string[]
   created_at: string
   updated_at: string
@@ -31,16 +31,23 @@ const TEMPLATE_TYPES = {
   interview_invitation: { label: 'Interview Invitation', icon: Mail, color: 'bg-blue-100 text-blue-700' },
   acceptance: { label: 'Acceptance', icon: CheckCircle, color: 'bg-green-100 text-green-700' },
   rejection: { label: 'Rejection', icon: XCircle, color: 'bg-red-100 text-red-700' },
+  cv_rejection: { label: 'CV Rejection', icon: UserX, color: 'bg-orange-100 text-orange-700' },
+  interview_rejection: { label: 'Interview Rejection', icon: MessageSquare, color: 'bg-pink-100 text-pink-700' },
   offer_letter: { label: 'Offer Letter', icon: Gift, color: 'bg-purple-100 text-purple-700' },
+  application_received: { label: 'Application Received', icon: Inbox, color: 'bg-indigo-100 text-indigo-700' },
   custom: { label: 'Custom', icon: FileText, color: 'bg-gray-100 text-gray-700' },
 }
 
 const AVAILABLE_VARIABLES = [
   '{{first_name}}',
   '{{full_name}}',
+  '{{candidate_name}}',
   '{{email}}',
   '{{job_title}}',
   '{{job_description_id}}',
+  '{{company_name}}',
+  '{{primary_color}}',
+  '{{application_id}}',
   '{{salary}}',
   '{{start_date}}',
   '{{location}}',

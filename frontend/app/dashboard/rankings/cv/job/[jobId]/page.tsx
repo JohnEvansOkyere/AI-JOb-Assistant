@@ -137,37 +137,39 @@ export default function JobRankingsPage() {
         apiClient.setToken(token)
       }
       
-      const response = await apiClient.get<RankedCandidate[]>(`/rankings/cv/job/${jobId}`)
+      // Parallelize API calls for better performance
+      const [rankingsResponse, ticketsResponse] = await Promise.all([
+        apiClient.get<RankedCandidate[]>(`/rankings/cv/job/${jobId}`),
+        apiClient.get<Ticket[]>(`/tickets/job/${jobId}`).catch(err => {
+          // Don't block rankings view if tickets API fails
+          console.error('Failed to load tickets for rankings view', err)
+          return { success: false, data: [] }
+        })
+      ])
       
-      if (response.success && response.data) {
-        setCandidates(response.data)
-        // Fetch existing tickets for this job to know which candidates already have tickets
-        // Only get unused tickets
-        try {
-          const ticketsResponse = await apiClient.get<Ticket[]>(`/tickets/job/${jobId}`)
-          if (ticketsResponse.success && ticketsResponse.data) {
-            const map: Record<string, Ticket> = {}
-            // Filter to only unused tickets
-            const unusedTickets = ticketsResponse.data.filter((t: any) => !t.is_used)
-            unusedTickets.forEach((t) => {
-              const cid = t.candidate_id
-              if (!cid) return
-              const existing = map[cid]
-              // Prefer the most recent ticket if multiple; fall back to first
-              if (!existing) {
-                map[cid] = t
-              } else if (t.created_at && (!existing.created_at || t.created_at > existing.created_at)) {
-                map[cid] = t
-              }
-            })
-            setTicketsByCandidate(map)
-          }
-        } catch (ticketErr) {
-          // Don't block rankings view if tickets API fails; just log in console
-          console.error('Failed to load tickets for rankings view', ticketErr)
+      if (rankingsResponse.success && rankingsResponse.data) {
+        setCandidates(rankingsResponse.data)
+        
+        // Process tickets if available
+        if (ticketsResponse.success && ticketsResponse.data) {
+          const map: Record<string, Ticket> = {}
+          // Filter to only unused tickets
+          const unusedTickets = ticketsResponse.data.filter((t: any) => !t.is_used)
+          unusedTickets.forEach((t) => {
+            const cid = t.candidate_id
+            if (!cid) return
+            const existing = map[cid]
+            // Prefer the most recent ticket if multiple; fall back to first
+            if (!existing) {
+              map[cid] = t
+            } else if (t.created_at && (!existing.created_at || t.created_at > existing.created_at)) {
+              map[cid] = t
+            }
+          })
+          setTicketsByCandidate(map)
         }
       } else {
-        setError(response.message || 'Failed to load rankings')
+        setError(rankingsResponse.message || 'Failed to load rankings')
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred')

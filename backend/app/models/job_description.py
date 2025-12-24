@@ -41,6 +41,7 @@ class JobDescriptionUpdate(BaseModel):
     employment_type: Optional[str] = None
     experience_level: Optional[str] = None
     is_active: Optional[bool] = None
+    hiring_status: Optional[str] = None  # active, screening, interviewing, filled, closed
 
 
 class JobDescription(JobDescriptionBase):
@@ -48,6 +49,7 @@ class JobDescription(JobDescriptionBase):
     id: UUID
     recruiter_id: UUID
     is_active: bool
+    hiring_status: str = "active"  # active, screening, interviewing, filled, closed
     created_at: datetime
     updated_at: datetime
     

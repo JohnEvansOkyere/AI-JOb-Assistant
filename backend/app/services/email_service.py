@@ -64,6 +64,33 @@ class EmailService:
             return None
     
     @staticmethod
+    async def get_email_template(recruiter_id: UUID, template_type: str) -> Optional[Dict[str, Any]]:
+        """
+        Get email template by type for a recruiter
+        
+        Args:
+            recruiter_id: Recruiter ID
+            template_type: Template type (e.g., 'application_received', 'acceptance', 'rejection')
+        
+        Returns:
+            Template dictionary or None if not found
+        """
+        try:
+            # Ensure default templates exist (lazy initialization)
+            from app.services.default_templates_service import DefaultTemplatesService
+            await DefaultTemplatesService.create_default_templates_for_recruiter(recruiter_id)
+            
+            # Get template by type (prefer default if multiple exist)
+            response = db.service_client.table("email_templates").select("*").eq(
+                "recruiter_id", str(recruiter_id)
+            ).eq("template_type", template_type).order("is_default", desc=True).limit(1).execute()
+            
+            return response.data[0] if response.data else None
+        except Exception as e:
+            logger.error("Error fetching email template", error=str(e), recruiter_id=str(recruiter_id), template_type=template_type)
+            return None
+    
+    @staticmethod
     def render_template(template_html: str, variables: Dict[str, Any]) -> str:
         """Render email template with variables"""
         try:

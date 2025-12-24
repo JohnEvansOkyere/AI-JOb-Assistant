@@ -27,6 +27,7 @@ export interface JobDescription {
   employment_type?: string
   experience_level?: string
   is_active: boolean
+  hiring_status?: 'active' | 'screening' | 'interviewing' | 'filled' | 'closed'
   created_at: string
   updated_at: string
 }

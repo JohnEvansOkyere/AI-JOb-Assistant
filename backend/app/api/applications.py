@@ -3,7 +3,7 @@ Job Applications API Routes
 Public application submission and recruiter management
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query, Request, BackgroundTasks
 from typing import Optional, List
 from uuid import UUID
 from app.schemas.common import Response
@@ -12,6 +12,7 @@ from app.services.application_service import ApplicationService
 from app.services.application_form_service import ApplicationFormService
 from app.services.cv_screening_service import CVScreeningService
 from app.services.cv_parser import CVParser
+from app.services.email_service import EmailService
 from app.models.application_form import ApplicationFormResponseCreate
 from app.utils.auth import get_current_user_id
 from app.utils.rate_limit import rate_limit_public
@@ -29,10 +30,555 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/applications", tags=["applications"])
 
 
+async def send_application_confirmation_email(
+    candidate_email: str,
+    candidate_name: str,
+    job_title: str,
+    job_id: UUID,
+    recruiter_id: UUID,
+    application_id: UUID
+):
+    """
+    Send automated confirmation email to candidate after application submission
+    Uses custom template from database if available, otherwise uses default template
+    
+    Args:
+        candidate_email: Candidate's email address
+        candidate_name: Candidate's full name
+        job_title: Job position title
+        job_id: Job description ID
+        recruiter_id: Recruiter/company ID
+        application_id: Application ID
+    """
+    try:
+        # Get company branding for personalized email
+        branding = await EmailService.get_company_branding(recruiter_id)
+        company_name = branding.get("company_name", "Our Company") if branding else "Our Company"
+        primary_color = branding.get("primary_color", "#2563eb") if branding else "#2563eb"
+        
+        # Get job details for more context
+        try:
+            job_response = db.service_client.table("job_descriptions").select("title, company_name").eq("id", str(job_id)).execute()
+            if job_response.data:
+                job_title = job_response.data[0].get("title", job_title)
+                # Use company name from job if available, otherwise from branding
+                if job_response.data[0].get("company_name"):
+                    company_name = job_response.data[0].get("company_name")
+        except Exception as e:
+            logger.warning("Could not fetch job details for email", error=str(e))
+        
+        # Try to get custom template from database
+        custom_template = await EmailService.get_email_template(recruiter_id, "application_received")
+        
+        if custom_template:
+            # Use custom template from database
+            template_html = custom_template.get("body_html", "")
+            template_subject = custom_template.get("subject", f"Application Received: {job_title} - {company_name}")
+            template_body_text = custom_template.get("body_text")
+            
+            # Prepare variables for Jinja2 template rendering
+            template_variables = {
+                "candidate_name": candidate_name,
+                "job_title": job_title,
+                "company_name": company_name,
+                "primary_color": primary_color,
+                "job_id": str(job_id),
+                "application_id": str(application_id),
+            }
+            
+            # Render template with variables
+            body_html = EmailService.render_template(template_html, template_variables)
+            subject = EmailService.render_template(template_subject, template_variables)
+            
+            # Render plain text if provided
+            if template_body_text:
+                body_text = EmailService.render_template(template_body_text, template_variables)
+            else:
+                # Generate plain text from HTML
+                import re
+                body_text = re.sub(r'<[^>]+>', '', body_html)
+                body_text = body_text.replace('&nbsp;', ' ')
+            
+            logger.info(
+                "Using custom application confirmation template",
+                template_id=str(custom_template.get("id")),
+                recruiter_id=str(recruiter_id)
+            )
+        else:
+            # Use default template (fallback)
+            default_template_html = """
+        <div style="max-width: 600px; margin: 0 auto; font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="background-color: {{primary_color}}; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0;">
+                <h1 style="margin: 0; font-size: 24px;">Application Received</h1>
+            </div>
+            
+            <div style="background-color: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
+                <p style="font-size: 16px; margin-top: 0;">Dear {{candidate_name}},</p>
+                
+                <p style="font-size: 16px;">Thank you for your interest in the <strong>{{job_title}}</strong> position at <strong>{{company_name}}</strong>.</p>
+                
+                <div style="background-color: #f9fafb; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid {{primary_color}};">
+                    <p style="margin: 0; font-size: 15px; color: #1f2937;">
+                        <strong>✓ We have successfully received your application and CV.</strong>
+                    </p>
+                </div>
+                
+                <p style="font-size: 16px;">Our hiring team will carefully review your application and qualifications. We appreciate the time and effort you put into your application.</p>
+                
+                <p style="font-size: 16px;"><strong>What happens next?</strong></p>
+                <ul style="font-size: 15px; color: #4b5563;">
+                    <li>Our team will review your application and CV</li>
+                    <li>If your profile matches our requirements, we will contact you via email</li>
+                    <li>We aim to respond to all applicants within 5-7 business days</li>
+                </ul>
+                
+                <p style="font-size: 16px;">We understand that waiting can be challenging, and we appreciate your patience as we carefully consider each application.</p>
+                
+                <div style="margin: 30px 0; padding: 20px; background-color: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                    <p style="margin: 0; font-size: 14px; color: #92400e;">
+                        <strong>💡 Tip:</strong> Please check your email regularly, including your spam folder, as we may contact you regarding next steps.
+                    </p>
+                </div>
+                
+                <p style="font-size: 16px;">If you have any questions about your application or the position, please don't hesitate to reach out to us.</p>
+                
+                <p style="font-size: 16px; margin-bottom: 0;">
+                    Best regards,<br>
+                    <strong>The Hiring Team</strong><br>
+                    <span style="color: {{primary_color}};">{{company_name}}</span>
+                </p>
+            </div>
+            
+            <div style="text-align: center; margin-top: 20px; padding: 20px; color: #6b7280; font-size: 12px;">
+                <p style="margin: 5px 0;">This is an automated confirmation email. Please do not reply to this message.</p>
+                <p style="margin: 5px 0;">If you need to contact us, please use the contact information provided in the job posting.</p>
+            </div>
+        </div>
+        """
+            
+            default_body_text = """
+Dear {{candidate_name}},
+
+Thank you for your interest in the {{job_title}} position at {{company_name}}.
+
+We have successfully received your application and CV. Our hiring team will carefully review your application and qualifications.
+
+What happens next?
+- Our team will review your application and CV
+- If your profile matches our requirements, we will contact you via email
+- We aim to respond to all applicants within 5-7 business days
+
+We understand that waiting can be challenging, and we appreciate your patience as we carefully consider each application.
+
+If you have any questions about your application or the position, please don't hesitate to reach out to us.
+
+Best regards,
+The Hiring Team
+{{company_name}}
+
+---
+This is an automated confirmation email. Please do not reply to this message.
+        """
+            
+            # Prepare variables for default template
+            template_variables = {
+                "candidate_name": candidate_name,
+                "job_title": job_title,
+                "company_name": company_name,
+                "primary_color": primary_color,
+            }
+            
+            # Render default template
+            body_html = EmailService.render_template(default_template_html, template_variables)
+            body_text = EmailService.render_template(default_body_text, template_variables)
+            subject = f"Application Received: {job_title} - {company_name}"
+            
+            logger.info("Using default application confirmation template", recruiter_id=str(recruiter_id))
+        
+        # Send email using EmailService
+        await EmailService.send_email(
+            recruiter_id=recruiter_id,
+            recipient_email=candidate_email,
+            recipient_name=candidate_name,
+            subject=subject,
+            body_html=body_html,
+            body_text=body_text,
+            job_description_id=job_id,
+            application_id=application_id,
+        )
+        
+        logger.info(
+            "Application confirmation email sent",
+            candidate_email=candidate_email,
+            job_id=str(job_id),
+            application_id=str(application_id),
+            used_custom_template=custom_template is not None
+        )
+        
+    except Exception as e:
+        # Log error but don't fail the application submission
+        logger.error(
+            "Failed to send application confirmation email",
+            error=str(e),
+            candidate_email=candidate_email,
+            job_id=str(job_id),
+            application_id=str(application_id),
+            exc_info=True
+        )
+        # Don't raise exception - email failure shouldn't break application submission
+
+
+async def send_cv_rejection_email(
+    candidate_email: str,
+    candidate_name: str,
+    job_title: str,
+    job_id: UUID,
+    recruiter_id: UUID,
+    application_id: UUID
+):
+    """
+    Send CV rejection email to candidate who applied but was not selected for interview
+    Uses custom template from database if available, otherwise uses default template
+    
+    Args:
+        candidate_email: Candidate's email address
+        candidate_name: Candidate's full name
+        job_title: Job position title
+        job_id: Job description ID
+        recruiter_id: Recruiter/company ID
+        application_id: Application ID
+    """
+    try:
+        # Get company branding for personalized email
+        branding = await EmailService.get_company_branding(recruiter_id)
+        company_name = branding.get("company_name", "Our Company") if branding else "Our Company"
+        primary_color = branding.get("primary_color", "#2563eb") if branding else "#2563eb"
+        
+        # Try to get custom template from database
+        custom_template = await EmailService.get_email_template(recruiter_id, "cv_rejection")
+        
+        if custom_template:
+            # Use custom template from database
+            template_html = custom_template.get("body_html", "")
+            template_subject = custom_template.get("subject", f"Update on Your Application: {job_title}")
+            template_body_text = custom_template.get("body_text")
+            
+            # Prepare variables for Jinja2 template rendering
+            template_variables = {
+                "candidate_name": candidate_name,
+                "job_title": job_title,
+                "company_name": company_name,
+                "primary_color": primary_color,
+                "job_id": str(job_id),
+                "application_id": str(application_id),
+            }
+            
+            # Render template with variables
+            body_html = EmailService.render_template(template_html, template_variables)
+            subject = EmailService.render_template(template_subject, template_variables)
+            
+            # Render plain text if provided
+            if template_body_text:
+                body_text = EmailService.render_template(template_body_text, template_variables)
+            else:
+                # Generate plain text from HTML
+                import re
+                body_text = re.sub(r'<[^>]+>', '', body_html)
+                body_text = body_text.replace('&nbsp;', ' ')
+            
+            logger.info(
+                "Using custom CV rejection template",
+                template_id=str(custom_template.get("id")),
+                recruiter_id=str(recruiter_id)
+            )
+        else:
+            # Use default template (fallback)
+            default_template_html = """
+        <div style="max-width: 600px; margin: 0 auto; font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="background-color: {{primary_color}}; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0;">
+                <h1 style="margin: 0; font-size: 24px;">Update on Your Application</h1>
+            </div>
+            
+            <div style="background-color: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
+                <p style="font-size: 16px; margin-top: 0;">Dear {{candidate_name}},</p>
+                
+                <p style="font-size: 16px;">Thank you for your interest in the <strong>{{job_title}}</strong> position at <strong>{{company_name}}</strong> and for taking the time to submit your application and CV.</p>
+                
+                <p style="font-size: 16px;">We genuinely appreciate the time and effort you invested in your application. We received many qualified applications, and after careful review, we have decided to move forward with candidates whose experience more closely aligns with the specific requirements of this role.</p>
+                
+                <div style="background-color: #f0f9ff; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid {{primary_color}};">
+                    <p style="margin: 0; font-size: 15px; color: #1e40af;">
+                        <strong>Please know that this decision in no way diminishes the value of your qualifications and experience.</strong> We recognize that you have rich experience and valuable skills that would be an asset to many organizations.
+                    </p>
+                </div>
+                
+                <p style="font-size: 16px;">We encourage you to continue pursuing opportunities that match your career goals. Your profile may be a perfect fit for future openings, and we hope you'll consider applying again when you see a position that aligns with your expertise.</p>
+                
+                <p style="font-size: 16px;">We wish you all the best in your job search and future career endeavors.</p>
+                
+                <p style="font-size: 16px; margin-bottom: 0;">
+                    Best regards,<br>
+                    <strong>The Hiring Team</strong><br>
+                    <span style="color: {{primary_color}};">{{company_name}}</span>
+                </p>
+            </div>
+            
+            <div style="text-align: center; margin-top: 20px; padding: 20px; color: #6b7280; font-size: 12px;">
+                <p style="margin: 5px 0;">This is an automated message. Please do not reply to this email.</p>
+            </div>
+        </div>
+        """
+            
+            default_body_text = """
+Dear {{candidate_name}},
+
+Thank you for your interest in the {{job_title}} position at {{company_name}} and for taking the time to submit your application and CV.
+
+We genuinely appreciate the time and effort you invested in your application. We received many qualified applications, and after careful review, we have decided to move forward with candidates whose experience more closely aligns with the specific requirements of this role.
+
+Please know that this decision in no way diminishes the value of your qualifications and experience. We recognize that you have rich experience and valuable skills that would be an asset to many organizations.
+
+We encourage you to continue pursuing opportunities that match your career goals. Your profile may be a perfect fit for future openings, and we hope you'll consider applying again when you see a position that aligns with your expertise.
+
+We wish you all the best in your job search and future career endeavors.
+
+Best regards,
+The Hiring Team
+{{company_name}}
+
+---
+This is an automated message. Please do not reply to this email.
+        """
+            
+            # Prepare variables for default template
+            template_variables = {
+                "candidate_name": candidate_name,
+                "job_title": job_title,
+                "company_name": company_name,
+                "primary_color": primary_color,
+            }
+            
+            # Render default template
+            body_html = EmailService.render_template(default_template_html, template_variables)
+            body_text = EmailService.render_template(default_body_text, template_variables)
+            subject = f"Update on Your Application: {job_title} - {company_name}"
+            
+            logger.info("Using default CV rejection template", recruiter_id=str(recruiter_id))
+        
+        # Send email using EmailService
+        await EmailService.send_email(
+            recruiter_id=recruiter_id,
+            recipient_email=candidate_email,
+            recipient_name=candidate_name,
+            subject=subject,
+            body_html=body_html,
+            body_text=body_text,
+            job_description_id=job_id,
+            application_id=application_id,
+        )
+        
+        logger.info(
+            "CV rejection email sent",
+            candidate_email=candidate_email,
+            job_id=str(job_id),
+            application_id=str(application_id),
+            used_custom_template=custom_template is not None
+        )
+        
+    except Exception as e:
+        logger.error(
+            "Failed to send CV rejection email",
+            error=str(e),
+            candidate_email=candidate_email,
+            job_id=str(job_id),
+            application_id=str(application_id),
+            exc_info=True
+        )
+        # Don't raise exception - email failure shouldn't break the process
+
+
+async def send_interview_rejection_email(
+    candidate_email: str,
+    candidate_name: str,
+    job_title: str,
+    job_id: UUID,
+    recruiter_id: UUID,
+    interview_id: UUID,
+    interview_date: Optional[str] = None
+):
+    """
+    Send interview rejection email to candidate who completed interview but was not selected
+    Uses custom template from database if available, otherwise uses default template
+    
+    Args:
+        candidate_email: Candidate's email address
+        candidate_name: Candidate's full name
+        job_title: Job position title
+        job_id: Job description ID
+        recruiter_id: Recruiter/company ID
+        interview_id: Interview ID
+        interview_date: Optional interview date string
+    """
+    try:
+        # Get company branding for personalized email
+        branding = await EmailService.get_company_branding(recruiter_id)
+        company_name = branding.get("company_name", "Our Company") if branding else "Our Company"
+        primary_color = branding.get("primary_color", "#2563eb") if branding else "#2563eb"
+        
+        # Try to get custom template from database
+        custom_template = await EmailService.get_email_template(recruiter_id, "interview_rejection")
+        
+        if custom_template:
+            # Use custom template from database
+            template_html = custom_template.get("body_html", "")
+            template_subject = custom_template.get("subject", f"Update on Your Interview: {job_title}")
+            template_body_text = custom_template.get("body_text")
+            
+            # Prepare variables for Jinja2 template rendering
+            template_variables = {
+                "candidate_name": candidate_name,
+                "job_title": job_title,
+                "company_name": company_name,
+                "primary_color": primary_color,
+                "job_id": str(job_id),
+                "interview_id": str(interview_id),
+                "interview_date": interview_date or "recently",
+            }
+            
+            # Render template with variables
+            body_html = EmailService.render_template(template_html, template_variables)
+            subject = EmailService.render_template(template_subject, template_variables)
+            
+            # Render plain text if provided
+            if template_body_text:
+                body_text = EmailService.render_template(template_body_text, template_variables)
+            else:
+                # Generate plain text from HTML
+                import re
+                body_text = re.sub(r'<[^>]+>', '', body_html)
+                body_text = body_text.replace('&nbsp;', ' ')
+            
+            logger.info(
+                "Using custom interview rejection template",
+                template_id=str(custom_template.get("id")),
+                recruiter_id=str(recruiter_id)
+            )
+        else:
+            # Use default template (fallback)
+            default_template_html = """
+        <div style="max-width: 600px; margin: 0 auto; font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="background-color: {{primary_color}}; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0;">
+                <h1 style="margin: 0; font-size: 24px;">Update on Your Interview</h1>
+            </div>
+            
+            <div style="background-color: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
+                <p style="font-size: 16px; margin-top: 0;">Dear {{candidate_name}},</p>
+                
+                <p style="font-size: 16px;">Thank you for your continued interest in the <strong>{{job_title}}</strong> position at <strong>{{company_name}}</strong> and for taking the time to participate in our interview process.</p>
+                
+                <p style="font-size: 16px;">We genuinely appreciate the time and effort you dedicated throughout the interview process. It was a pleasure learning more about your background, skills, and career aspirations.</p>
+                
+                <p style="font-size: 16px;">After careful consideration and thorough evaluation of all candidates, we have made the difficult decision to move forward with another candidate whose qualifications more closely align with the specific needs of this role at this time.</p>
+                
+                <div style="background-color: #f0f9ff; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid {{primary_color}};">
+                    <p style="margin: 0; font-size: 15px; color: #1e40af;">
+                        <strong>This decision was not an easy one, and we want you to know that your qualifications and interview performance were impressive.</strong> Unfortunately, we can only select one candidate for this position.
+                    </p>
+                </div>
+                
+                <p style="font-size: 16px;">We hope you understand, and we encourage you to continue pursuing opportunities that align with your career goals. We believe your skills and experience will be valuable assets to the right organization.</p>
+                
+                <p style="font-size: 16px;">We wish you the very best in your future endeavors and thank you again for your interest in {{company_name}}.</p>
+                
+                <p style="font-size: 16px; margin-bottom: 0;">
+                    Best regards,<br>
+                    <strong>The Hiring Team</strong><br>
+                    <span style="color: {{primary_color}};">{{company_name}}</span>
+                </p>
+            </div>
+            
+            <div style="text-align: center; margin-top: 20px; padding: 20px; color: #6b7280; font-size: 12px;">
+                <p style="margin: 5px 0;">This is an automated message. Please do not reply to this email.</p>
+            </div>
+        </div>
+        """
+            
+            default_body_text = """
+Dear {{candidate_name}},
+
+Thank you for your continued interest in the {{job_title}} position at {{company_name}} and for taking the time to participate in our interview process.
+
+We genuinely appreciate the time and effort you dedicated throughout the interview process. It was a pleasure learning more about your background, skills, and career aspirations.
+
+After careful consideration and thorough evaluation of all candidates, we have made the difficult decision to move forward with another candidate whose qualifications more closely align with the specific needs of this role at this time.
+
+This decision was not an easy one, and we want you to know that your qualifications and interview performance were impressive. Unfortunately, we can only select one candidate for this position.
+
+We hope you understand, and we encourage you to continue pursuing opportunities that align with your career goals. We believe your skills and experience will be valuable assets to the right organization.
+
+We wish you the very best in your future endeavors and thank you again for your interest in {{company_name}}.
+
+Best regards,
+The Hiring Team
+{{company_name}}
+
+---
+This is an automated message. Please do not reply to this email.
+        """
+            
+            # Prepare variables for default template
+            template_variables = {
+                "candidate_name": candidate_name,
+                "job_title": job_title,
+                "company_name": company_name,
+                "primary_color": primary_color,
+                "interview_date": interview_date or "recently",
+            }
+            
+            # Render default template
+            body_html = EmailService.render_template(default_template_html, template_variables)
+            body_text = EmailService.render_template(default_body_text, template_variables)
+            subject = f"Update on Your Interview: {job_title} - {company_name}"
+            
+            logger.info("Using default interview rejection template", recruiter_id=str(recruiter_id))
+        
+        # Send email using EmailService
+        await EmailService.send_email(
+            recruiter_id=recruiter_id,
+            recipient_email=candidate_email,
+            recipient_name=candidate_name,
+            subject=subject,
+            body_html=body_html,
+            body_text=body_text,
+            job_description_id=job_id,
+            interview_id=interview_id,
+        )
+        
+        logger.info(
+            "Interview rejection email sent",
+            candidate_email=candidate_email,
+            job_id=str(job_id),
+            interview_id=str(interview_id),
+            used_custom_template=custom_template is not None
+        )
+        
+    except Exception as e:
+        logger.error(
+            "Failed to send interview rejection email",
+            error=str(e),
+            candidate_email=candidate_email,
+            job_id=str(job_id),
+            interview_id=str(interview_id),
+            exc_info=True
+        )
+        # Don't raise exception - email failure shouldn't break the process
+
+
 @router.post("/apply", response_model=Response[JobApplication], status_code=status.HTTP_201_CREATED)
 @rate_limit_public()  # Limit: 20 requests per hour per IP (prevents spam applications)
 async def apply_for_job(
     request: Request,
+    background_tasks: BackgroundTasks,
     job_description_id: UUID = Form(...),
     email: str = Form(...),
     full_name: str = Form(...),
@@ -201,6 +747,17 @@ async def apply_for_job(
             except Exception as e:
                 logger.warning("Error saving custom form responses", error=str(e), exc_info=True)
                 # Don't fail the application if custom fields fail
+        
+        # Send automated confirmation email to candidate (background task)
+        background_tasks.add_task(
+            send_application_confirmation_email,
+            candidate_email=validated_email,
+            candidate_name=sanitized_full_name,
+            job_title=job.data[0].get("title", "the position"),
+            job_id=job_description_id,
+            recruiter_id=UUID(job.data[0].get("recruiter_id")),
+            application_id=UUID(application["id"])
+        )
         
         return Response(
             success=True,

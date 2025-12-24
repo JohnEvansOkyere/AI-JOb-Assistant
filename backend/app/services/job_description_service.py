@@ -35,6 +35,18 @@ class JobDescriptionService:
             job_dict = job_data.model_dump()
             job_dict["recruiter_id"] = str(recruiter_id)
             
+            # Ensure new jobs start as active and accepting applications
+            # If hiring_status is not specified, default to 'active'
+            if 'hiring_status' not in job_dict or not job_dict.get('hiring_status'):
+                job_dict['hiring_status'] = 'active'
+            
+            # Set is_active based on hiring_status
+            # Only 'active' hiring_status should accept new applications
+            if job_dict.get('hiring_status') == 'active':
+                job_dict['is_active'] = True
+            else:
+                job_dict['is_active'] = False
+            
             # Use service client to bypass RLS (we've already validated authorization in the API layer)
             response = db.service_client.table("job_descriptions").insert(job_dict).execute()
             
@@ -139,6 +151,24 @@ class JobDescriptionService:
             
             # Update (use service client to bypass RLS - we've already verified ownership)
             update_data = job_data.model_dump(exclude_unset=True)
+            
+            # Automatically set is_active based on hiring_status
+            # Only 'active' hiring_status should accept new applications
+            # All other statuses (screening, interviewing, filled, closed) should NOT accept applications
+            if 'hiring_status' in update_data:
+                hiring_status = update_data['hiring_status']
+                if hiring_status == 'active':
+                    update_data['is_active'] = True
+                else:
+                    # For screening, interviewing, filled, closed - set is_active to False
+                    update_data['is_active'] = False
+                logger.info(
+                    "Auto-updating is_active based on hiring_status",
+                    job_id=str(job_id),
+                    hiring_status=hiring_status,
+                    is_active=update_data['is_active']
+                )
+            
             response = db.service_client.table("job_descriptions").update(update_data).eq("id", str(job_id)).execute()
             
             if not response.data:

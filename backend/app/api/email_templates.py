@@ -22,7 +22,7 @@ class EmailTemplateCreate(BaseModel):
     subject: str
     body_html: str
     body_text: Optional[str] = None
-    template_type: str  # interview_invitation, acceptance, rejection, offer_letter, custom
+    template_type: str  # interview_invitation, acceptance, rejection, cv_rejection, interview_rejection, offer_letter, application_received, custom
     available_variables: Optional[List[str]] = None
     branding_id: Optional[UUID] = None
 
@@ -84,12 +84,16 @@ async def list_templates(
 ):
     """List all email templates for the recruiter"""
     try:
+        # Initialize default templates if they don't exist (lazy initialization)
+        from app.services.default_templates_service import DefaultTemplatesService
+        await DefaultTemplatesService.create_default_templates_for_recruiter(recruiter_id)
+        
         query = db.service_client.table("email_templates").select("*").eq("recruiter_id", str(recruiter_id))
         
         if template_type:
             query = query.eq("template_type", template_type)
         
-        response = query.order("created_at", desc=True).execute()
+        response = query.order("is_default", desc=True).order("created_at", desc=True).execute()
         
         return Response(
             success=True,

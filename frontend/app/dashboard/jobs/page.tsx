@@ -78,6 +78,16 @@ export default function JobsPage() {
       }
     } catch (err: any) {
       console.error('Error loading jobs:', err)
+      
+      // Check if it's a 401 error (unauthorized/expired token)
+      const status = err?.status || err?.response?.status
+      if (status === 401) {
+        // Token expired or invalid - redirect to login
+        localStorage.removeItem('auth_token')
+        router.push('/login')
+        return
+      }
+      
       // Use error handler for user-friendly messages
       const errorMessage = ApiErrorHandler.getErrorMessage(err)
       setError(errorMessage)
@@ -117,6 +127,15 @@ export default function JobsPage() {
       }
     } catch (err: any) {
       console.error('Error updating hiring status:', err)
+      
+      // Check if it's a 401 error (unauthorized/expired token)
+      const status = err?.status || err?.response?.status
+      if (status === 401) {
+        localStorage.removeItem('auth_token')
+        router.push('/login')
+        return
+      }
+      
       const errorMessage = ApiErrorHandler.getErrorMessage(err)
       setError(errorMessage)
     } finally {
@@ -174,6 +193,15 @@ export default function JobsPage() {
       }
     } catch (err: any) {
       console.error('Error completing hiring:', err)
+      
+      // Check if it's a 401 error (unauthorized/expired token)
+      const status = err?.status || err?.response?.status
+      if (status === 401) {
+        localStorage.removeItem('auth_token')
+        router.push('/login')
+        return
+      }
+      
       const errorMessage = ApiErrorHandler.getErrorMessage(err)
       setError(errorMessage)
     } finally {
@@ -201,6 +229,15 @@ export default function JobsPage() {
       }
     } catch (err: any) {
       console.error('Error sending rejections:', err)
+      
+      // Check if it's a 401 error (unauthorized/expired token)
+      const status = err?.status || err?.response?.status
+      if (status === 401) {
+        localStorage.removeItem('auth_token')
+        router.push('/login')
+        return
+      }
+      
       const errorMessage = ApiErrorHandler.getErrorMessage(err)
       setError(errorMessage)
     } finally {

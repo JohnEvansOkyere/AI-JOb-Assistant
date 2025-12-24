@@ -100,7 +100,7 @@ async def create_stages_from_template(
 @router.post("/jobs/{job_id}/stages/custom")
 async def create_custom_stages(
     job_id: UUID,
-    stages: List[dict] = Body(..., description="List of stage configurations"),
+    request_body: dict = Body(..., description="Request body with stages array"),
     recruiter_id: UUID = Depends(get_current_user_id)
 ):
     """
@@ -108,13 +108,20 @@ async def create_custom_stages(
     
     Args:
         job_id: Job description ID
-        stages: List of stage configurations, each with: stage_name, stage_type, is_required, order_index
+        request_body: Request body with 'stages' array containing stage configurations
         recruiter_id: Current user ID
     
     Returns:
         Created stages
     """
     try:
+        stages = request_body.get("stages", [])
+        if not isinstance(stages, list):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="'stages' must be a list"
+            )
+        
         created_stages = await InterviewStageService.create_custom_stages(
             job_id=job_id,
             stages=stages,

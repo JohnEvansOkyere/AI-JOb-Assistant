@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { JobDescription } from '@/types'
 import { Check, Copy } from 'lucide-react'
+import { StageConfiguration } from '@/components/interview-stages/StageConfiguration'
 
 export default function JobDetailPage() {
   const router = useRouter()
@@ -236,6 +237,9 @@ export default function JobDetailPage() {
             </div>
           </div>
         </Card>
+
+        {/* Interview Stages Configuration */}
+        <StageConfiguration jobId={jobId} />
       </div>
     </DashboardLayout>
   )

@@ -43,6 +43,9 @@ slowapi==0.1.9
 resend==2.1.0  # Resend email API
 jinja2==3.1.2  # Template engine for email templates
 
+# Task Scheduling
+apscheduler==3.10.4  # Advanced Python Scheduler for periodic tasks
+
 # Calendar Integration
 google-api-python-client>=2.111.0
 google-auth-httplib2==0.1.1

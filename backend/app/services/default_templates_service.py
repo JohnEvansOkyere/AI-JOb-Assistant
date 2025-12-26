@@ -480,6 +480,124 @@ Best regards,
 The Hiring Team
 {{company_name}}""",
                 "available_variables": ["{{candidate_name}}", "{{job_title}}", "{{company_name}}", "{{primary_color}}", "{{salary}}", "{{start_date}}", "{{location}}", "{{employment_type}}"]
+            },
+            
+            "reassurance_14day": {
+                "name": "Default: 14-Day Reassurance",
+                "subject": "Update on Your Application: {{job_title}} - {{company_name}}",
+                "body_html": """<div style="max-width: 600px; margin: 0 auto; font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+    <div style="background-color: {{primary_color}}; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0;">
+        <h1 style="margin: 0; font-size: 24px;">Application Update</h1>
+    </div>
+    
+    <div style="background-color: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
+        <p style="font-size: 16px; margin-top: 0;">Dear {{candidate_name}},</p>
+        
+        <p style="font-size: 16px;">Thank you for your interest in the <strong>{{job_title}}</strong> position at <strong>{{company_name}}</strong>.</p>
+        
+        <p style="font-size: 16px;">We wanted to reach out to let you know that we are still actively reviewing applications for this position. We received a significant number of qualified candidates, and we want to ensure we give each application the careful consideration it deserves.</p>
+        
+        <div style="background-color: #f0f9ff; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid {{primary_color}};">
+            <p style="margin: 0; font-size: 15px; color: #1e40af;">
+                <strong>✓ Your application is still under review.</strong>
+            </p>
+        </div>
+        
+        <p style="font-size: 16px;">We appreciate your patience as we work through this process. Our hiring team is committed to making thoughtful decisions, and this takes time.</p>
+        
+        <p style="font-size: 16px;">We will be in touch as soon as we have an update on your application status. In the meantime, if you have any questions, please feel free to reach out to us.</p>
+        
+        <p style="font-size: 16px;">Thank you again for your interest in joining our team.</p>
+        
+        <p style="font-size: 16px; margin-bottom: 0;">
+            Best regards,<br>
+            <strong>The Hiring Team</strong><br>
+            <span style="color: {{primary_color}};">{{company_name}}</span>
+        </p>
+    </div>
+    
+    <div style="text-align: center; margin-top: 20px; padding: 20px; color: #6b7280; font-size: 12px;">
+        <p style="margin: 5px 0;">This is an automated update email. Please do not reply to this message.</p>
+    </div>
+</div>""",
+                "body_text": """Dear {{candidate_name}},
+
+Thank you for your interest in the {{job_title}} position at {{company_name}}.
+
+We wanted to reach out to let you know that we are still actively reviewing applications for this position. We received a significant number of qualified candidates, and we want to ensure we give each application the careful consideration it deserves.
+
+Your application is still under review.
+
+We appreciate your patience as we work through this process. Our hiring team is committed to making thoughtful decisions, and this takes time.
+
+We will be in touch as soon as we have an update on your application status. In the meantime, if you have any questions, please feel free to reach out to us.
+
+Thank you again for your interest in joining our team.
+
+Best regards,
+The Hiring Team
+{{company_name}}
+
+---
+This is an automated update email. Please do not reply to this message.""",
+                "available_variables": ["{{candidate_name}}", "{{job_title}}", "{{company_name}}", "{{primary_color}}"]
+            },
+            
+            "auto_timeout_rejection": {
+                "name": "Default: 30-Day Auto-Rejection",
+                "subject": "Update on Your Application: {{job_title}} - {{company_name}}",
+                "body_html": """<div style="max-width: 600px; margin: 0 auto; font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+    <div style="background-color: {{primary_color}}; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0;">
+        <h1 style="margin: 0; font-size: 24px;">Application Update</h1>
+    </div>
+    
+    <div style="background-color: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
+        <p style="font-size: 16px; margin-top: 0;">Dear {{candidate_name}},</p>
+        
+        <p style="font-size: 16px;">Thank you for your interest in the <strong>{{job_title}}</strong> position at <strong>{{company_name}}</strong> and for taking the time to submit your application.</p>
+        
+        <p style="font-size: 16px;">After careful consideration of all applications we received, we have decided to move forward with other candidates whose qualifications more closely align with our current needs for this position.</p>
+        
+        <div style="background-color: #fef2f2; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #ef4444;">
+            <p style="margin: 0; font-size: 15px; color: #991b1b;">
+                This decision was not an easy one, and we want you to know that we appreciate the time and effort you invested in your application.
+            </p>
+        </div>
+        
+        <p style="font-size: 16px;">We were impressed by the quality of applications we received, and yours was no exception. We encourage you to continue pursuing opportunities that match your career goals and skills.</p>
+        
+        <p style="font-size: 16px;">We wish you all the best in your job search and future career endeavors. Thank you again for your interest in {{company_name}}.</p>
+        
+        <p style="font-size: 16px; margin-bottom: 0;">
+            Best regards,<br>
+            <strong>The Hiring Team</strong><br>
+            <span style="color: {{primary_color}};">{{company_name}}</span>
+        </p>
+    </div>
+    
+    <div style="text-align: center; margin-top: 20px; padding: 20px; color: #6b7280; font-size: 12px;">
+        <p style="margin: 5px 0;">This is an automated message. Please do not reply to this email.</p>
+    </div>
+</div>""",
+                "body_text": """Dear {{candidate_name}},
+
+Thank you for your interest in the {{job_title}} position at {{company_name}} and for taking the time to submit your application.
+
+After careful consideration of all applications we received, we have decided to move forward with other candidates whose qualifications more closely align with our current needs for this position.
+
+This decision was not an easy one, and we want you to know that we appreciate the time and effort you invested in your application.
+
+We were impressed by the quality of applications we received, and yours was no exception. We encourage you to continue pursuing opportunities that match your career goals and skills.
+
+We wish you all the best in your job search and future career endeavors. Thank you again for your interest in {{company_name}}.
+
+Best regards,
+The Hiring Team
+{{company_name}}
+
+---
+This is an automated message. Please do not reply to this email.""",
+                "available_variables": ["{{candidate_name}}", "{{job_title}}", "{{company_name}}", "{{primary_color}}"]
             }
         }
     

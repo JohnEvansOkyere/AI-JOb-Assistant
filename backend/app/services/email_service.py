@@ -407,7 +407,29 @@ class EmailService:
                 except Exception as send_error:
                     error_msg = str(send_error)
                     logger.error("Resend send error", error=error_msg, recipient=recipient_email)
-                    raise Exception(f"Failed to send email via Resend: {error_msg}")
+                    
+                    # Fallback to SMTP if configured and Resend fails
+                    if smtp_configured:
+                        logger.warning("Resend failed, falling back to SMTP", error=error_msg, recipient=recipient_email)
+                        try:
+                            reply_to = settings.email_reply_to or sender_email
+                            external_email_id = EmailService._send_via_smtp(
+                                from_email=sender_email,
+                                from_name=sender_name,
+                                recipient_email=recipient_email,
+                                recipient_name=recipient_name,
+                                subject=subject,
+                                body_html=final_html,
+                                body_text=body_text,
+                                attachments=attachments,
+                                reply_to=reply_to,
+                            )
+                            logger.info("Email sent via SMTP fallback", recipient=recipient_email)
+                        except Exception as smtp_error:
+                            logger.error("SMTP fallback also failed", error=str(smtp_error), recipient=recipient_email)
+                            raise Exception(f"Failed to send email via Resend and SMTP fallback: Resend error: {error_msg}, SMTP error: {str(smtp_error)}")
+                    else:
+                        raise Exception(f"Failed to send email via Resend: {error_msg}")
             
             elif provider == "smtp":
                 # Send via SMTP

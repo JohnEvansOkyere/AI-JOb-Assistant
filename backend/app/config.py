@@ -81,6 +81,13 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     email_provider: str = "resend"  # "resend" or "smtp"
     
+    # Automatic Follow-Up Emails
+    followup_emails_enabled: bool = True
+    followup_reassurance_days: int = 14  # Days after application to send reassurance email
+    followup_rejection_days: int = 30  # Days after application to send auto-rejection email
+    followup_check_hour: int = 9  # Hour of day to run check (0-23, default 9 AM)
+    followup_check_minute: int = 0  # Minute of hour to run check (0-59)
+    
     # Calendar Integration
     google_calendar_client_id: Optional[str] = None
     google_calendar_client_secret: Optional[str] = None

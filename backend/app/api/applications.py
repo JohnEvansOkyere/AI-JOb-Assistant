@@ -58,12 +58,9 @@ async def send_application_confirmation_email(
         
         # Get job details for more context
         try:
-            job_response = db.service_client.table("job_descriptions").select("title, company_name").eq("id", str(job_id)).execute()
+            job_response = db.service_client.table("job_descriptions").select("title").eq("id", str(job_id)).execute()
             if job_response.data:
                 job_title = job_response.data[0].get("title", job_title)
-                # Use company name from job if available, otherwise from branding
-                if job_response.data[0].get("company_name"):
-                    company_name = job_response.data[0].get("company_name")
         except Exception as e:
             logger.warning("Could not fetch job details for email", error=str(e))
         

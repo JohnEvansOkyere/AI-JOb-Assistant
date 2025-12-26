@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from contextlib import asynccontextmanager
 from app.config import settings
 import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
@@ -165,12 +166,35 @@ async def startup_event():
             error=str(e),
             provider=settings.primary_ai_provider
         )
+    
+    # Start scheduler for automatic follow-up emails
+    try:
+        from app.services.scheduler_service import start_scheduler
+        start_scheduler()
+    except Exception as e:
+        logger.error(
+            "Failed to start scheduler",
+            error=str(e),
+            exc_info=True
+        )
+        # Don't fail startup if scheduler fails - it's not critical
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Application shutdown tasks"""
     logger.info("Application shutting down")
+    
+    # Stop scheduler gracefully
+    try:
+        from app.services.scheduler_service import stop_scheduler
+        stop_scheduler()
+    except Exception as e:
+        logger.error(
+            "Error stopping scheduler",
+            error=str(e),
+            exc_info=True
+        )
 
 
 # Health check is now handled by health_router

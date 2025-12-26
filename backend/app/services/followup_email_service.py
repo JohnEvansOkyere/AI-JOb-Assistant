@@ -27,10 +27,11 @@ class FollowupEmailService:
             List of application dictionaries with candidate and job details
         """
         try:
-            # Calculate date range (14-16 days ago to avoid duplicates)
+            # Calculate date range (using configured days, with 2-day buffer to avoid duplicates)
             now = datetime.utcnow()
-            from_date = now - timedelta(days=16)
-            to_date = now - timedelta(days=14)
+            days = settings.followup_reassurance_days
+            from_date = now - timedelta(days=days + 2)
+            to_date = now - timedelta(days=days)
             
             logger.info(
                 "Finding 14-day candidates",
@@ -174,10 +175,11 @@ class FollowupEmailService:
             List of application dictionaries with candidate and job details
         """
         try:
-            # Calculate date range (30-32 days ago)
+            # Calculate date range (using configured days, with 2-day buffer to avoid duplicates)
             now = datetime.utcnow()
-            from_date = now - timedelta(days=32)
-            to_date = now - timedelta(days=30)
+            days = settings.followup_rejection_days
+            from_date = now - timedelta(days=days + 2)
+            to_date = now - timedelta(days=days)
             
             logger.info(
                 "Finding 30-day candidates",

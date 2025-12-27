@@ -10,6 +10,7 @@ from app.services.interview_service import InterviewService
 from app.services.interview_ai_service import InterviewAIService
 from app.services.ticket_service import TicketService
 from app.services.interview_report_service import InterviewReportService
+from app.services.storage_service import StorageService
 from app.database import db
 from app.utils.errors import NotFoundError, ForbiddenError
 from app.voice.stt_service import get_stt_provider
@@ -72,6 +73,7 @@ async def voice_interview(
     audio_buffer = BytesIO()  # Buffer for accumulating audio chunks
     is_recording_audio = False  # Track if we're currently recording candidate audio
     current_question_id = None  # Track current question for voice mode
+    response_audio_paths = {}  # Track audio paths by question_id for voice mode responses
 
     try:
         # Validate ticket first
@@ -357,8 +359,48 @@ async def voice_interview(
                         )
                     )
                     
-                    # Process as answer (reuse answer handling logic)
+                    # Save audio to storage (non-blocking, don't fail interview if storage fails)
                     question_id = current_question_id
+                    if question_id and interview:
+                        try:
+                            # Detect file extension from audio bytes (default to webm)
+                            file_extension = "webm"  # Default for browser MediaRecorder
+                            if audio_bytes[:4] == b'RIFF' and audio_bytes[8:12] == b'WAVE':
+                                file_extension = "wav"
+                            elif audio_bytes[:3] == b'ID3' or audio_bytes[:2] in (b'\xff\xfb', b'\xff\xf3'):
+                                file_extension = "mp3"
+                            elif audio_bytes[4:8] == b'ftyp':
+                                file_extension = "m4a"
+                            
+                            # Upload response audio
+                            storage_path = await StorageService.upload_response_audio(
+                                UUID(interview["id"]),
+                                UUID(question_id),
+                                audio_bytes,
+                                response_index=1,  # Could track multiple responses per question
+                                file_extension=file_extension
+                            )
+                            
+                            # Store audio path for later update when response is saved
+                            response_audio_paths[question_id] = storage_path
+                            
+                            logger.info(
+                                "Response audio saved to storage",
+                                interview_id=str(interview["id"]),
+                                question_id=question_id,
+                                storage_path=storage_path
+                            )
+                            
+                        except Exception as storage_error:
+                            # Don't fail the interview if storage fails
+                            logger.warning(
+                                "Failed to save response audio to storage",
+                                interview_id=str(interview["id"]),
+                                question_id=question_id,
+                                error=str(storage_error)
+                            )
+                    
+                    # Process as answer (reuse answer handling logic)
                     if not question_id:
                         await websocket.send_text(
                             json.dumps(
@@ -425,6 +467,17 @@ async def voice_interview(
                         ),
                         timeout=45.0  # 45 second timeout for response analysis
                     )
+                    
+                    # Update response with audio path if available (for voice mode)
+                    if interview_mode == "voice" and question_id in response_audio_paths:
+                        audio_path = response_audio_paths[question_id]
+                        # Find the most recent response for this question and update it
+                        db.service_client.table("interview_responses").update({
+                            "response_audio_path": audio_path
+                        }).eq("interview_id", str(interview["id"])).eq("question_id", question_id).order("created_at", desc=True).limit(1).execute()
+                        logger.info("Updated response with audio path", question_id=question_id, audio_path=audio_path)
+                        # Remove from tracking dict
+                        del response_audio_paths[question_id]
 
                     # Update / create interview-level report (non-blocking for UX if it fails)
                     try:
@@ -634,6 +687,16 @@ async def voice_interview(
                 # Mark interview as completed
                 try:
                     await InterviewService.complete_interview(UUID(interview["id"]))
+                    
+                    # Save full interview audio if in voice mode and we have accumulated audio
+                    # Note: For full interview audio, we'd need to accumulate all audio chunks
+                    # This is a simplified version - in production, you might want to accumulate
+                    # all audio throughout the interview
+                    if interview_mode == "voice":
+                        # Optionally save a combined audio file if we track it
+                        # For now, individual response audio files are saved above
+                        logger.info("Interview completed in voice mode", interview_id=str(interview["id"]))
+                        
                 except Exception as e:
                     logger.error("Error completing interview", error=str(e))
                 

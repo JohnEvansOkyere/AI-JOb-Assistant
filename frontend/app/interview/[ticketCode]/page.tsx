@@ -6,11 +6,12 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Send, Bot, User, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { apiClient } from '@/lib/api/client'
+import { VoiceRecorder, AudioPlayer } from '@/components/interview'
 
 type Message =
   | { role: 'system'; text: string }
-  | { role: 'assistant'; text: string; questionId?: string }
-  | { role: 'user'; text: string }
+  | { role: 'assistant'; text: string; questionId?: string; audioBlob?: Blob }
+  | { role: 'user'; text: string; transcription?: string }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -25,6 +26,7 @@ export default function InterviewPage() {
   const [candidateName, setCandidateName] = useState<string | null>(urlCandidateName)
   const [jobTitle, setJobTitle] = useState<string | null>(urlJobTitle)
   const [companyName, setCompanyName] = useState<string | null>(null)
+  const [interviewMode, setInterviewMode] = useState<'text' | 'voice'>('text')
 
   const [ws, setWs] = useState<WebSocket | null>(null)
   const [connected, setConnected] = useState(false)
@@ -41,8 +43,18 @@ export default function InterviewPage() {
   const [waitingForAI, setWaitingForAI] = useState(false)
   const [waitingForFinalMessage, setWaitingForFinalMessage] = useState(false)
   const [interviewComplete, setInterviewComplete] = useState(false)
+  
+  // Voice mode state
+  const [isRecording, setIsRecording] = useState(false)
+  const [currentQuestionAudio, setCurrentQuestionAudio] = useState<Blob | null>(null)
+  const [isPlayingQuestion, setIsPlayingQuestion] = useState(false)
+  const [lastTranscription, setLastTranscription] = useState<string | null>(null)
+  
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const streamRef = useRef<MediaStream | null>(null)
 
   // Load ticket context (candidate, job, company) so the candidate always sees who they are interviewing with
   useEffect(() => {
@@ -59,6 +71,10 @@ export default function InterviewPage() {
           }
           if (data.company_name) {
             setCompanyName(data.company_name)
+          }
+          // Set interview mode from ticket
+          if (data.interview_mode) {
+            setInterviewMode(data.interview_mode)
           }
         }
       } catch (err) {
@@ -109,9 +125,21 @@ export default function InterviewPage() {
         socket.send(JSON.stringify({ type: 'start' }))
       }
 
-      socket.onmessage = (event) => {
+      socket.onmessage = async (event) => {
+        // Handle binary audio messages
+        if (event.data instanceof Blob || event.data instanceof ArrayBuffer) {
+          if (interviewMode === 'voice' && isPlayingQuestion) {
+            // This is TTS audio for the question
+            const blob = event.data instanceof Blob ? event.data : new Blob([event.data])
+            setCurrentQuestionAudio(blob)
+          }
+          return
+        }
+
+        // Handle JSON messages
         try {
           const data = JSON.parse(event.data)
+          
           if (data.type === 'question') {
             setWaitingForAI(false)
             setCurrentQuestionId(data.question_id)
@@ -119,6 +147,27 @@ export default function InterviewPage() {
               ...prev.filter(m => m.role !== 'system' || !m.text.includes('Connecting')),
               { role: 'assistant', text: data.text, questionId: data.question_id },
             ])
+          } else if (data.type === 'audio_question_start') {
+            // AI is about to speak - prepare for audio
+            setIsPlayingQuestion(true)
+            setCurrentQuestionAudio(null) // Clear previous audio
+          } else if (data.type === 'audio_question_end') {
+            // AI finished speaking
+            setIsPlayingQuestion(false)
+          } else if (data.type === 'transcription') {
+            // Received transcription of candidate's audio
+            setLastTranscription(data.text)
+            setMessages((prev) => {
+              const lastUserMsg = [...prev].reverse().find(m => m.role === 'user')
+              if (lastUserMsg) {
+                return prev.map(m => 
+                  m === lastUserMsg 
+                    ? { ...m, transcription: data.text }
+                    : m
+                )
+              }
+              return prev
+            })
           } else if (data.type === 'analysis') {
             return
           } else if (data.type === 'info') {
@@ -138,6 +187,8 @@ export default function InterviewPage() {
             setWaitingForAI(false)
             setWaitingForFinalMessage(false)
             setInterviewComplete(true)
+            setIsRecording(false)
+            stopRecording() // Clean up recording
             setMessages((prev) => [
               ...prev,
               { role: 'system', text: data.message },
@@ -188,6 +239,93 @@ export default function InterviewPage() {
     }
   }
 
+  // Voice recording functions
+  const startRecording = async () => {
+    if (!ws || ws.readyState !== WebSocket.OPEN || isRecording || interviewComplete) return
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      })
+
+      streamRef.current = stream
+      audioChunksRef.current = []
+
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : 'audio/mp4'
+
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType,
+        audioBitsPerSecond: 128000,
+      })
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+          // Send audio chunk to server
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(event.data)
+          }
+        }
+      }
+
+      mediaRecorder.onstop = () => {
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop())
+          streamRef.current = null
+        }
+      }
+
+      mediaRecorder.onerror = (event) => {
+        console.error('MediaRecorder error', event)
+        setError('Recording error occurred')
+        stopRecording()
+      }
+
+      mediaRecorderRef.current = mediaRecorder
+      mediaRecorder.start(1000) // Collect data every 1 second
+      setIsRecording(true)
+
+      // Send audio_start message
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'audio_start' }))
+      }
+    } catch (err: any) {
+      console.error('Failed to start recording', err)
+      setError('Failed to start recording. Please check microphone permissions.')
+    }
+  }
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop()
+      setIsRecording(false)
+
+      // Send audio_end message
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'audio_end' }))
+        setWaitingForAI(true) // Wait for transcription
+      }
+    }
+  }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopRecording()
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop())
+      }
+    }
+  }, [])
+
   const handleSend = () => {
     if (!ws || ws.readyState !== WebSocket.OPEN || !currentInput.trim()) return
     if (interviewComplete) return
@@ -215,6 +353,15 @@ export default function InterviewPage() {
         }),
       )
     }
+  }
+
+  const handleAudioStart = () => {
+    startRecording()
+  }
+
+  const handleAudioEnd = (audioBlob: Blob) => {
+    // Audio already sent in chunks, just stop recording
+    stopRecording()
   }
 
   return (
@@ -312,12 +459,21 @@ export default function InterviewPage() {
                   <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
                     <Bot className="w-5 h-5 text-white" />
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 space-y-2">
                     <div className="bg-white dark:bg-gray-800 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm border border-gray-200 dark:border-gray-700">
                       <p className="text-gray-900 dark:text-gray-100 whitespace-pre-wrap leading-relaxed">
                         {m.text}
                       </p>
                     </div>
+                    {/* Show audio player for voice mode questions */}
+                    {interviewMode === 'voice' && m.questionId === currentQuestionId && currentQuestionAudio && (
+                      <AudioPlayer
+                        audioBlob={currentQuestionAudio}
+                        autoPlay={true}
+                        onPlayStart={() => setIsPlayingQuestion(true)}
+                        onPlayEnd={() => setIsPlayingQuestion(false)}
+                      />
+                    )}
                   </div>
                 </div>
               )
@@ -327,8 +483,14 @@ export default function InterviewPage() {
               return (
                 <div key={idx} className="flex items-start gap-4 justify-end group">
                   <div className="flex-1 min-w-0 flex justify-end">
-                    <div className="bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-2xl rounded-tr-sm px-4 py-3 max-w-[80%] shadow-sm">
+                    <div className="bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-2xl rounded-tr-sm px-4 py-3 max-w-[80%] shadow-sm space-y-2">
                       <p className="whitespace-pre-wrap leading-relaxed">{m.text}</p>
+                      {/* Show transcription in voice mode */}
+                      {interviewMode === 'voice' && m.transcription && m.transcription !== m.text && (
+                        <p className="text-xs text-blue-100 italic border-t border-blue-500 pt-2 mt-2">
+                          Transcribed: {m.transcription}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex-shrink-0 w-8 h-8 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center">
@@ -380,7 +542,32 @@ export default function InterviewPage() {
                 </div>
               </div>
             </div>
+          ) : interviewMode === 'voice' ? (
+            // Voice mode input
+            <div className="space-y-3">
+              {lastTranscription && (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                  <p className="text-sm text-blue-800 dark:text-blue-300">
+                    <span className="font-medium">Transcription:</span> {lastTranscription}
+                  </p>
+                </div>
+              )}
+              <div className="flex items-center justify-center">
+                <VoiceRecorder
+                  onAudioStart={handleAudioStart}
+                  onAudioEnd={handleAudioEnd}
+                  disabled={!connected || waitingForAI || interviewComplete}
+                  isRecording={isRecording}
+                />
+              </div>
+              {waitingForAI && (
+                <p className="text-center text-sm text-gray-500 dark:text-gray-400">
+                  Processing your response...
+                </p>
+              )}
+            </div>
           ) : (
+            // Text mode input
             <div className="flex items-end gap-3">
               <div className="flex-1 relative">
                 <Input

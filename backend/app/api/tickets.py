@@ -103,7 +103,7 @@ async def send_interview_invitation_email(
     try:
         # Fetch ticket details
         ticket_response = db.service_client.table("interview_tickets").select(
-            "ticket_code, expires_at, candidate_id, job_description_id"
+            "ticket_code, expires_at, candidate_id, job_description_id, interview_mode"
         ).eq("id", str(ticket_id)).execute()
         
         if not ticket_response.data:
@@ -164,7 +164,8 @@ async def send_interview_invitation_email(
             candidate_email=candidate["email"],
             ticket_id=ticket_id,
             job_description_id=job_description_id,
-            expires_in_hours=expires_in_hours
+            expires_in_hours=expires_in_hours,
+            interview_mode=ticket.get("interview_mode", "text")
         )
         logger.info("Interview invitation email sent", ticket_id=str(ticket_id), candidate_email=candidate["email"])
     except Exception as e:

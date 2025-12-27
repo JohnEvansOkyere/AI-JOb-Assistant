@@ -12,7 +12,7 @@ import { apiClient } from '@/lib/api/client'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
-import { Copy, Link as LinkIcon, Check, Mail, Send } from 'lucide-react'
+import { Copy, Link as LinkIcon, Check, Mail, Send, Mic, Type } from 'lucide-react'
 import { getInterviewLink, copyToClipboard } from '@/lib/utils/interview'
 
 interface Application {
@@ -36,6 +36,7 @@ export default function CreateTicketPage() {
   const [ticketCode, setTicketCode] = useState('')
   const [ticketId, setTicketId] = useState<string>('')
   const [expiresInHours, setExpiresInHours] = useState(48)
+  const [interviewMode, setInterviewMode] = useState<'text' | 'voice'>('text')
   const [copiedCode, setCopiedCode] = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
   const [emailSent, setEmailSent] = useState(false)
@@ -86,7 +87,8 @@ export default function CreateTicketPage() {
 
       const response = await apiClient.post<{ ticket_code: string; id: string }>(`/tickets?expires_in_hours=${expiresInHours}&send_email=true`, {
         candidate_id: app.candidate_id,
-        job_description_id: jobId
+        job_description_id: jobId,
+        interview_mode: interviewMode
       })
       
       if (response.success && response.data) {
@@ -340,6 +342,99 @@ export default function CreateTicketPage() {
               max={168}
               helperText="How long the ticket will be valid (default: 48 hours)"
             />
+
+            {/* Interview Mode Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                Interview Mode
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setInterviewMode('text')}
+                  className={`p-4 rounded-lg border-2 transition-all ${
+                    interviewMode === 'text'
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${
+                      interviewMode === 'text'
+                        ? 'bg-blue-100 dark:bg-blue-800'
+                        : 'bg-gray-100 dark:bg-gray-700'
+                    }`}>
+                      <Type className={`w-5 h-5 ${
+                        interviewMode === 'text'
+                          ? 'text-blue-600 dark:text-blue-400'
+                          : 'text-gray-600 dark:text-gray-400'
+                      }`} />
+                    </div>
+                    <div className="text-left">
+                      <div className={`font-semibold ${
+                        interviewMode === 'text'
+                          ? 'text-blue-900 dark:text-blue-300'
+                          : 'text-gray-900 dark:text-gray-100'
+                      }`}>
+                        Text Interview
+                      </div>
+                      <div className={`text-sm ${
+                        interviewMode === 'text'
+                          ? 'text-blue-700 dark:text-blue-400'
+                          : 'text-gray-600 dark:text-gray-400'
+                      }`}>
+                        Candidates type their answers
+                      </div>
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setInterviewMode('voice')}
+                  className={`p-4 rounded-lg border-2 transition-all ${
+                    interviewMode === 'voice'
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${
+                      interviewMode === 'voice'
+                        ? 'bg-blue-100 dark:bg-blue-800'
+                        : 'bg-gray-100 dark:bg-gray-700'
+                    }`}>
+                      <Mic className={`w-5 h-5 ${
+                        interviewMode === 'voice'
+                          ? 'text-blue-600 dark:text-blue-400'
+                          : 'text-gray-600 dark:text-gray-400'
+                      }`} />
+                    </div>
+                    <div className="text-left">
+                      <div className={`font-semibold ${
+                        interviewMode === 'voice'
+                          ? 'text-blue-900 dark:text-blue-300'
+                          : 'text-gray-900 dark:text-gray-100'
+                      }`}>
+                        Voice Interview
+                      </div>
+                      <div className={`text-sm ${
+                        interviewMode === 'voice'
+                          ? 'text-blue-700 dark:text-blue-400'
+                          : 'text-gray-600 dark:text-gray-400'
+                      }`}>
+                        Candidates speak their answers
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                {interviewMode === 'voice' 
+                  ? 'Voice interviews require a microphone and modern browser. Questions will be read aloud.'
+                  : 'Text interviews work on all devices. Candidates type their responses.'}
+              </p>
+            </div>
 
             <div className="flex gap-4">
               <Button

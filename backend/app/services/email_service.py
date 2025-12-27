@@ -519,6 +519,7 @@ class EmailService:
         ticket_id: UUID,
         job_description_id: UUID,
         expires_in_hours: Optional[int] = None,
+        interview_mode: str = "text",
         from_email: Optional[str] = None,  # Frontend configurable
         from_name: Optional[str] = None,   # Frontend configurable
         email_provider: Optional[str] = None,  # "resend" or "smtp"
@@ -531,6 +532,13 @@ class EmailService:
             <h2 style="color: {{primary_color}};">Interview Invitation</h2>
             <p>Dear {{candidate_name}},</p>
             <p>Thank you for your interest in the <strong>{{job_title}}</strong> position. We would like to invite you to complete an AI-powered interview.</p>
+            
+            {% if interview_mode == 'voice' %}
+            <div style="background-color: #e0f2fe; border-left: 4px solid {{primary_color}}; padding: 15px; margin: 20px 0; border-radius: 4px;">
+                <p style="margin: 0; font-weight: bold; color: #0369a1;">🎤 Voice Interview</p>
+                <p style="margin: 5px 0 0 0; font-size: 14px; color: #0c4a6e;">This is a voice interview. You'll speak your answers using your microphone. Please ensure you have a working microphone and use a modern browser (Chrome, Firefox, or Edge recommended).</p>
+            </div>
+            {% endif %}
             
             <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
                 <h3 style="margin-top: 0;">Your Interview Ticket Code:</h3>
@@ -570,6 +578,7 @@ class EmailService:
             "interview_link": interview_link,
             "primary_color": primary_color,
             "expires_in_hours": expires_in_hours,
+            "interview_mode": interview_mode,
         }
         
         body_html = EmailService.render_template(template_html, variables)

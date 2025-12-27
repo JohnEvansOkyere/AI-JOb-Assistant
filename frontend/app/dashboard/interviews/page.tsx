@@ -12,7 +12,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { apiClient } from '@/lib/api/client'
-import { CheckCircle, XCircle, Mail, Filter } from 'lucide-react'
+import { CheckCircle, XCircle, Mail, Filter, Mic, Type } from 'lucide-react'
 
 interface InterviewRow {
   id: string
@@ -21,6 +21,7 @@ interface InterviewRow {
   created_at: string
   job_description_id: string
   job_title?: string | null
+  interview_mode?: string | null
   candidate?: {
     id: string
     full_name?: string | null
@@ -297,6 +298,7 @@ export default function InterviewsPage() {
                   <tr className="border-b border-gray-200 text-left text-xs font-semibold text-gray-500 uppercase">
                     <th className="py-3 pr-4">Candidate</th>
                     <th className="py-3 pr-4">Job</th>
+                    <th className="py-3 pr-4">Mode</th>
                     <th className="py-3 pr-4">Interview Status</th>
                     <th className="py-3 pr-4">Job Status</th>
                     <th className="py-3 pr-4">Actions</th>
@@ -329,6 +331,19 @@ export default function InterviewsPage() {
                           <div className="text-xs text-gray-500">{i.candidate?.email}</div>
                         </td>
                         <td className="py-3 pr-4 text-gray-900">{i.job_title || '—'}</td>
+                        <td className="py-3 pr-4">
+                          {i.interview_mode === 'voice' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                              <Mic className="w-3 h-3" />
+                              Voice
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                              <Type className="w-3 h-3" />
+                              Text
+                            </span>
+                          )}
+                        </td>
                         <td className="py-3 pr-4 text-xs capitalize text-gray-700">{i.status}</td>
                         <td className="py-3 pr-4">
                           {getJobStatusBadge(i.job_status)}

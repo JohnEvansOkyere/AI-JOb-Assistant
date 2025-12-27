@@ -17,6 +17,7 @@ class InterviewBase(BaseModel):
     duration_seconds: Optional[int] = None
     audio_file_path: Optional[str] = None
     transcript: Optional[str] = None
+    interview_mode: Optional[str] = None  # "text" or "voice", inherited from ticket
 
 
 class InterviewCreate(BaseModel):

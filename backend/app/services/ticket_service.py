@@ -36,7 +36,8 @@ class TicketService:
         candidate_id: UUID,
         job_description_id: UUID,
         created_by: UUID,
-        expires_in_hours: Optional[int] = None
+        expires_in_hours: Optional[int] = None,
+        interview_mode: str = "text"
     ) -> dict:
         """
         Create a new interview ticket
@@ -46,6 +47,7 @@ class TicketService:
             job_description_id: Job description ID
             created_by: Recruiter ID who created the ticket
             expires_in_hours: Optional expiration time in hours
+            interview_mode: Interview mode - "text" or "voice" (default: "text")
         
         Returns:
             Created ticket with ticket code
@@ -69,6 +71,10 @@ class TicketService:
             if expires_in_hours:
                 expires_at = datetime.utcnow() + timedelta(hours=expires_in_hours)
             
+            # Validate interview_mode
+            if interview_mode not in ("text", "voice"):
+                raise ValueError(f"Invalid interview_mode: {interview_mode}. Must be 'text' or 'voice'")
+            
             ticket_data = {
                 "candidate_id": str(candidate_id),
                 "job_description_id": str(job_description_id),
@@ -76,7 +82,8 @@ class TicketService:
                 "is_used": False,
                 "is_expired": False,
                 "expires_at": expires_at.isoformat() if expires_at else None,
-                "created_by": str(created_by)
+                "created_by": str(created_by),
+                "interview_mode": interview_mode
             }
             
             response = db.service_client.table("interview_tickets").insert(ticket_data).execute()

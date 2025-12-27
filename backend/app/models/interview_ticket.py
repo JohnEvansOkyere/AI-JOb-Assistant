@@ -15,6 +15,7 @@ class InterviewTicketBase(BaseModel):
     is_used: bool = False
     is_expired: bool = False
     expires_at: Optional[datetime] = None
+    interview_mode: str = "text"  # "text" or "voice"
 
 
 class InterviewTicketCreate(BaseModel):
@@ -22,6 +23,7 @@ class InterviewTicketCreate(BaseModel):
     candidate_id: UUID
     job_description_id: UUID
     expires_at: Optional[datetime] = None
+    interview_mode: str = "text"  # "text" or "voice"
 
 
 class InterviewTicketUpdate(BaseModel):

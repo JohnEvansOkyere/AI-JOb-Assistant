@@ -23,6 +23,7 @@ router = APIRouter(prefix="/tickets", tags=["tickets"])
 async def create_ticket(
     candidate_id: UUID = Body(..., description="Candidate ID"),
     job_description_id: UUID = Body(..., description="Job description ID"),
+    interview_mode: str = Body("text", description="Interview mode: 'text' or 'voice'"),
     expires_in_hours: Optional[int] = Query(None, description="Expiration time in hours"),
     send_email: bool = Query(True, description="Automatically send interview invitation email"),
     background_tasks: BackgroundTasks = BackgroundTasks(),
@@ -34,6 +35,7 @@ async def create_ticket(
     Args:
         candidate_id: Candidate ID (request body)
         job_description_id: Job description ID (request body)
+        interview_mode: Interview mode - 'text' or 'voice' (default: 'text')
         expires_in_hours: Optional expiration time in hours (query param)
         send_email: Whether to automatically send interview invitation email (default: true)
         background_tasks: Background tasks for email sending
@@ -51,11 +53,19 @@ async def create_ticket(
                 detail="Job description not found"
             )
         
+        # Validate interview_mode
+        if interview_mode not in ("text", "voice"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="interview_mode must be 'text' or 'voice'"
+            )
+        
         ticket = await TicketService.create_ticket(
             candidate_id=candidate_id,
             job_description_id=job_description_id,
             created_by=recruiter_id,
-            expires_in_hours=expires_in_hours
+            expires_in_hours=expires_in_hours,
+            interview_mode=interview_mode
         )
         
         # Automatically send interview invitation email if requested
@@ -254,6 +264,7 @@ async def validate_ticket(ticket_code: str):
                 "candidate_name": candidate_name,
                 "job_title": job_title,
                 "company_name": company_name,
+                "interview_mode": ticket.get("interview_mode", "text"),  # Include interview mode
             }
         )
     except Exception as e:

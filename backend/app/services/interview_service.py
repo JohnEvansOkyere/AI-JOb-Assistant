@@ -40,12 +40,13 @@ class InterviewService:
             # Mark ticket as used
             await TicketService.mark_ticket_used(UUID(ticket["id"]))
             
-            # Create interview
+            # Create interview (inherit interview_mode from ticket)
             interview_data = {
                 "candidate_id": ticket["candidate_id"],
                 "job_description_id": ticket["job_description_id"],
                 "ticket_id": ticket["id"],
-                "status": "pending"
+                "status": "pending",
+                "interview_mode": ticket.get("interview_mode", "text")  # Inherit mode from ticket
             }
             
             # Use service client to bypass RLS; access is controlled via ticket validation

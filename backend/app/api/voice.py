@@ -1,7 +1,9 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi.websockets import WebSocketState
 from uuid import UUID
 import json
 import asyncio
+from io import BytesIO
 
 from app.config import settings
 from app.services.interview_service import InterviewService
@@ -26,24 +28,33 @@ async def voice_interview(
     ticket_code: str,
 ):
     """
-    WebSocket endpoint for **text-based** realtime interviews (no audio yet).
+    WebSocket endpoint for realtime interviews (supports both text and voice modes).
 
-    Protocol (JSON text messages):
-    - Client → server:
-      { "type": "start" }
-        - Creates & starts interview from ticket, sends first question.
-      { "type": "answer", "question_id": "<uuid>", "text": "candidate answer" }
-        - Saves response, analyzes it, and sends follow-up question.
-
-    - Server → client:
-      { "type": "error", "message": "..." }
-      { "type": "question", "question_id": "<uuid>", "text": "..." }
-      { "type": "analysis", ... }  (optional, future use)
+    Protocol:
+    - JSON text messages (control):
+      Client → server:
+        { "type": "start" }
+        { "type": "answer", "question_id": "<uuid>", "text": "candidate answer" }  // Text mode
+        { "type": "audio_start" }  // Voice mode: candidate started speaking
+        { "type": "audio_end" }    // Voice mode: candidate finished speaking
+        { "type": "final_message", "text": "..." }
+      
+      Server → client:
+        { "type": "question", "question_id": "<uuid>", "text": "..." }
+        { "type": "audio_question_start" }  // Voice mode: AI is about to speak
+        { "type": "audio_question_end" }    // Voice mode: AI finished speaking
+        { "type": "transcription", "text": "..." }  // Voice mode: confirmed transcription
+        { "type": "error", "message": "..." }
+        { "type": "analysis", ... }
+    
+    - Binary messages (audio):
+      Client → server: Raw audio chunks (WebM/Opus format)
+      Server → client: TTS audio chunks (MP3 format)
     """
 
     await websocket.accept()
 
-    # Placeholder providers (not yet used for text-only mode but initialized for future audio support)
+    # Initialize STT and TTS providers
     stt = get_stt_provider(settings.stt_provider)
     tts = get_tts_provider()
 
@@ -55,11 +66,19 @@ async def voice_interview(
     # Limit the total number of questions per interview to control token usage
     MAX_QUESTIONS = 5
     questions_asked = 0
+    
+    # Voice mode state
+    interview_mode = "text"  # Will be set from ticket
+    audio_buffer = BytesIO()  # Buffer for accumulating audio chunks
+    is_recording_audio = False  # Track if we're currently recording candidate audio
+    current_question_id = None  # Track current question for voice mode
 
     try:
         # Validate ticket first
         try:
             ticket = await TicketService.validate_ticket(ticket_code)
+            # Get interview mode from ticket
+            interview_mode = ticket.get("interview_mode", "text")
         except NotFoundError:
             await websocket.send_text(json.dumps({"type": "error", "message": "Invalid ticket code"}))
             await websocket.close()
@@ -72,7 +91,27 @@ async def voice_interview(
         # Lazy-create interview on "start" message, so we don't consume the ticket until client is ready
 
         while True:
-            raw = await websocket.receive_text()
+            # Receive message (can be text or binary)
+            message_data = await websocket.receive()
+            
+            # Handle binary audio chunks
+            if message_data.get("type") == "websocket.receive.bytes":
+                if interview_mode == "voice" and is_recording_audio:
+                    # Accumulate audio chunk in buffer
+                    audio_chunk = message_data.get("bytes", b"")
+                    if audio_chunk:
+                        audio_buffer.write(audio_chunk)
+                        logger.debug("Received audio chunk", chunk_size=len(audio_chunk), buffer_size=audio_buffer.tell())
+                else:
+                    logger.warning("Received binary message but not in voice recording mode", interview_mode=interview_mode, is_recording=is_recording_audio)
+                continue
+            
+            # Handle text messages
+            if message_data.get("type") != "websocket.receive.text":
+                logger.warning("Unexpected message type", msg_type=message_data.get("type"))
+                continue
+            
+            raw = message_data.get("text", "")
             try:
                 message = json.loads(raw)
             except json.JSONDecodeError:
@@ -129,15 +168,60 @@ async def voice_interview(
 
                         if first_q:
                             questions_asked = 1
-                            await websocket.send_text(
-                                json.dumps(
-                                    {
-                                        "type": "question",
-                                        "question_id": first_q["id"],
-                                        "text": first_q["question_text"],
-                                    }
+                            current_question_id = first_q["id"]
+                            question_text = first_q["question_text"]
+                            
+                            # Send question (text mode) or generate audio (voice mode)
+                            if interview_mode == "voice":
+                                # Generate TTS audio for question
+                                try:
+                                    await websocket.send_text(
+                                        json.dumps({"type": "audio_question_start"})
+                                    )
+                                    
+                                    # Generate audio
+                                    audio_bytes = await tts.synthesize(question_text)
+                                    
+                                    # Send audio as binary
+                                    await websocket.send_bytes(audio_bytes)
+                                    
+                                    await websocket.send_text(
+                                        json.dumps({"type": "audio_question_end"})
+                                    )
+                                    
+                                    # Also send text for display/accessibility
+                                    await websocket.send_text(
+                                        json.dumps(
+                                            {
+                                                "type": "question",
+                                                "question_id": first_q["id"],
+                                                "text": question_text,
+                                            }
+                                        )
+                                    )
+                                except Exception as e:
+                                    logger.error("TTS failed, falling back to text", error=str(e))
+                                    # Fallback to text if TTS fails
+                                    await websocket.send_text(
+                                        json.dumps(
+                                            {
+                                                "type": "question",
+                                                "question_id": first_q["id"],
+                                                "text": question_text,
+                                            }
+                                        )
+                                    )
+                            else:
+                                # Text mode - send text only
+                                await websocket.send_text(
+                                    json.dumps(
+                                        {
+                                            "type": "question",
+                                            "question_id": first_q["id"],
+                                            "text": question_text,
+                                        }
+                                    )
                                 )
-                            )
                         else:
                             await websocket.send_text(
                                 json.dumps(
@@ -178,6 +262,130 @@ async def voice_interview(
                             }
                         )
                     )
+
+            elif msg_type == "audio_start":
+                # Candidate started speaking (voice mode)
+                if interview_mode != "voice":
+                    await websocket.send_text(
+                        json.dumps(
+                            {
+                                "type": "error",
+                                "message": "audio_start only valid in voice mode",
+                            }
+                        )
+                    )
+                    continue
+                
+                if not is_recording_audio:
+                    is_recording_audio = True
+                    audio_buffer.seek(0)
+                    audio_buffer.truncate(0)  # Clear buffer
+                    logger.info("Started recording candidate audio")
+                else:
+                    logger.warning("audio_start received but already recording")
+
+            elif msg_type == "audio_end":
+                # Candidate finished speaking (voice mode) - transcribe audio
+                if interview_mode != "voice":
+                    await websocket.send_text(
+                        json.dumps(
+                            {
+                                "type": "error",
+                                "message": "audio_end only valid in voice mode",
+                            }
+                        )
+                    )
+                    continue
+                
+                if not is_recording_audio:
+                    logger.warning("audio_end received but not recording")
+                    continue
+                
+                if interview is None:
+                    await websocket.send_text(
+                        json.dumps(
+                            {
+                                "type": "error",
+                                "message": "Interview not started. Send a 'start' message first.",
+                            }
+                        )
+                    )
+                    continue
+                
+                # Get audio from buffer
+                audio_buffer.seek(0)
+                audio_bytes = audio_buffer.read()
+                audio_buffer.seek(0)
+                audio_buffer.truncate(0)  # Clear buffer
+                is_recording_audio = False
+                
+                if not audio_bytes or len(audio_bytes) == 0:
+                    logger.warning("audio_end received but buffer is empty")
+                    await websocket.send_text(
+                        json.dumps(
+                            {
+                                "type": "error",
+                                "message": "No audio data received. Please try speaking again.",
+                            }
+                        )
+                    )
+                    continue
+                
+                # Transcribe audio using STT
+                try:
+                    logger.info("Transcribing audio", audio_size=len(audio_bytes))
+                    answer_text = await stt.transcribe_chunk(audio_bytes, language="en")
+                    
+                    if not answer_text or len(answer_text.strip()) == 0:
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    "type": "error",
+                                    "message": "Could not transcribe audio. Please try speaking again.",
+                                }
+                            )
+                        )
+                        continue
+                    
+                    # Send transcription confirmation
+                    await websocket.send_text(
+                        json.dumps(
+                            {
+                                "type": "transcription",
+                                "text": answer_text,
+                            }
+                        )
+                    )
+                    
+                    # Process as answer (reuse answer handling logic)
+                    question_id = current_question_id
+                    if not question_id:
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    "type": "error",
+                                    "message": "No current question. Please start the interview.",
+                                }
+                            )
+                        )
+                        continue
+                    
+                    # Continue with answer processing (will jump to answer handling)
+                    message = {"type": "answer", "question_id": question_id, "text": answer_text}
+                    msg_type = "answer"
+                    # Fall through to answer handling
+                    
+                except Exception as e:
+                    logger.error("STT transcription failed", error=str(e), exc_info=True)
+                    await websocket.send_text(
+                        json.dumps(
+                            {
+                                "type": "error",
+                                "message": f"Failed to transcribe audio: {str(e)}. Please try again.",
+                            }
+                        )
+                    )
+                    continue
 
             elif msg_type == "answer":
                 if interview is None:
@@ -304,15 +512,60 @@ async def voice_interview(
 
                     if followup:
                         questions_asked += 1
-                        await websocket.send_text(
-                            json.dumps(
-                                {
-                                    "type": "question",
-                                    "question_id": followup["id"],
-                                    "text": followup["question_text"],
-                                }
+                        current_question_id = followup["id"]
+                        question_text = followup["question_text"]
+                        
+                        # Send question (text mode) or generate audio (voice mode)
+                        if interview_mode == "voice":
+                            # Generate TTS audio for question
+                            try:
+                                await websocket.send_text(
+                                    json.dumps({"type": "audio_question_start"})
+                                )
+                                
+                                # Generate audio
+                                audio_bytes = await tts.synthesize(question_text)
+                                
+                                # Send audio as binary
+                                await websocket.send_bytes(audio_bytes)
+                                
+                                await websocket.send_text(
+                                    json.dumps({"type": "audio_question_end"})
+                                )
+                                
+                                # Also send text for display/accessibility
+                                await websocket.send_text(
+                                    json.dumps(
+                                        {
+                                            "type": "question",
+                                            "question_id": followup["id"],
+                                            "text": question_text,
+                                        }
+                                    )
+                                )
+                            except Exception as e:
+                                logger.error("TTS failed, falling back to text", error=str(e))
+                                # Fallback to text if TTS fails
+                                await websocket.send_text(
+                                    json.dumps(
+                                        {
+                                            "type": "question",
+                                            "question_id": followup["id"],
+                                            "text": question_text,
+                                        }
+                                    )
+                                )
+                        else:
+                            # Text mode - send text only
+                            await websocket.send_text(
+                                json.dumps(
+                                    {
+                                        "type": "question",
+                                        "question_id": followup["id"],
+                                        "text": question_text,
+                                    }
+                                )
                             )
-                        )
                     else:
                         # If no followup generated, end interview gracefully
                         waiting_for_final_message = True

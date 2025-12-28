@@ -348,34 +348,38 @@ export function VoiceRecorder({
       setIsRecording(false)
       console.log('VoiceRecorder internal recording state set to false')
       
-      // If MediaRecorder was already inactive or doesn't exist, ensure parent is notified
-      // This handles the case where MediaRecorder stopped before stopRecording was called
+      // If MediaRecorder was already inactive or doesn't exist, check if onstop already fired
+      // Only call onAudioEnd if we haven't already processed the stop
       const currentState = mediaRecorderRef.current?.state
       if ((!mediaRecorderRef.current || currentState === 'inactive') && onAudioEnd) {
         // Check if we have chunks to create a blob
         if (audioChunksRef.current.length > 0) {
           const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm'
           const audioBlob = new Blob(audioChunksRef.current, { type: mimeType })
-          console.log('Calling onAudioEnd with blob (MediaRecorder was already stopped)', { 
+          console.log('Calling onAudioEnd with blob (MediaRecorder was already stopped but has chunks)', { 
             blobSize: audioBlob.size,
             chunksCount: audioChunksRef.current.length 
           })
           onAudioEnd(audioBlob)
+          // Clear chunks after creating blob
+          audioChunksRef.current = []
         } else {
-          // No audio chunks, but still notify parent to update state
-          console.log('No audio chunks found, but notifying parent to update state')
-          onAudioEnd(new Blob([], { type: 'audio/webm' }))
+          // No audio chunks and MediaRecorder is already inactive
+          // This means onstop already fired and processed the audio
+          // Don't call onAudioEnd again to avoid duplicate audio_end messages
+          console.log('MediaRecorder already stopped with no chunks - onstop handler likely already processed this')
         }
       } else if (currentState !== 'recording' && currentState !== 'paused' && onAudioEnd) {
         // MediaRecorder is in some other state (like inactive) but onstop might not have fired
-        // Still notify parent to update state
-        console.log('MediaRecorder in unexpected state, notifying parent anyway', { state: currentState })
+        // Only process if we have audio chunks
         if (audioChunksRef.current.length > 0) {
+          console.log('MediaRecorder in unexpected state, but has chunks - processing', { state: currentState })
           const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm'
           const audioBlob = new Blob(audioChunksRef.current, { type: mimeType })
           onAudioEnd(audioBlob)
+          audioChunksRef.current = []
         } else {
-          onAudioEnd(new Blob([], { type: 'audio/webm' }))
+          console.log('MediaRecorder in unexpected state with no chunks - skipping onAudioEnd to avoid duplicate', { state: currentState })
         }
       }
     } catch (error) {

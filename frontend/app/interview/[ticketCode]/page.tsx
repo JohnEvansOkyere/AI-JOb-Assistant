@@ -59,6 +59,7 @@ export default function InterviewPage() {
   const interviewModeRef = useRef<'text' | 'voice'>('text') // Use ref to track current mode for WebSocket handlers
   const pendingQuestionAudioRef = useRef<Blob | null>(null) // Use ref to track audio for WebSocket handlers (avoid stale closures)
   const currentQuestionAudioRef = useRef<Blob | null>(null) // Use ref for current question audio
+  const audioEndSentRef = useRef(false) // Track if audio_end message has been sent to prevent duplicates
 
   // Load ticket context (candidate, job, company) so the candidate always sees who they are interviewing with
   useEffect(() => {
@@ -262,6 +263,7 @@ export default function InterviewPage() {
           if (data.type === 'question') {
             setWaitingForAI(false)
             setCurrentQuestionId(data.question_id)
+            audioEndSentRef.current = false // Reset flag when new question arrives, ready for next recording
             
             // Get the pending audio if available (audio can arrive before or after question text)
             // Use refs to avoid stale closure issues - refs always have current values
@@ -324,6 +326,9 @@ export default function InterviewPage() {
               return prev
             })
           } else if (data.type === 'analysis') {
+            // Analysis received - backend has processed the response
+            // Keep waitingForAI true until next question arrives
+            // Don't clear waitingForAI here - wait for question or error
             return
           } else if (data.type === 'info') {
             setWaitingForAI(false)
@@ -515,6 +520,7 @@ export default function InterviewPage() {
     // VoiceRecorder handles recording internally
     // Just update parent state to reflect recording has started
     setIsRecording(true)
+    audioEndSentRef.current = false // Reset flag when starting new recording
     
     // Send audio_start message to server
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -533,19 +539,46 @@ export default function InterviewPage() {
   const handleAudioEnd = (audioBlob: Blob) => {
     console.log('handleAudioEnd called from VoiceRecorder', { 
       blobSize: audioBlob.size,
-      currentIsRecording: isRecording 
+      currentIsRecording: isRecording,
+      alreadySent: audioEndSentRef.current,
+      hasAudioData: audioBlob.size > 0
     })
+    
+    // Prevent duplicate audio_end messages
+    if (audioEndSentRef.current) {
+      console.warn('audio_end already sent - ignoring duplicate call. If MediaRecorder stopped unexpectedly, this is expected.')
+      // Still update state even if we can't send again
+      setIsRecording(false)
+      return
+    }
+    
+    // If blob is empty and we weren't recording, don't send audio_end
+    // This handles edge cases where MediaRecorder stopped unexpectedly
+    if (audioBlob.size === 0 && !isRecording) {
+      console.warn('handleAudioEnd called with empty blob and isRecording is false - MediaRecorder may have stopped unexpectedly')
+      setIsRecording(false)
+      return
+    }
     
     // VoiceRecorder has already stopped its own recording
     // Just update parent state and send audio_end message
     setIsRecording(false)
     console.log('Parent isRecording set to false')
     
-    // Send audio_end message to server
+    // Send audio_end message to server (only once)
+    // Even if blob is empty (could be a very short recording), we still need to signal the backend
     if (ws && ws.readyState === WebSocket.OPEN) {
-      console.log('Sending audio_end message to server')
+      console.log('Sending audio_end message to server', { blobSize: audioBlob.size })
       ws.send(JSON.stringify({ type: 'audio_end' }))
+      audioEndSentRef.current = true // Mark as sent
       setWaitingForAI(true) // Wait for transcription
+    } else {
+      console.error('Cannot send audio_end - WebSocket not connected', { 
+        hasWs: !!ws,
+        readyState: ws?.readyState 
+      })
+      // Reset flag if we can't send, so user can try again
+      audioEndSentRef.current = false
     }
   }
 

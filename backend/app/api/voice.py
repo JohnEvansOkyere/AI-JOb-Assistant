@@ -338,7 +338,11 @@ async def voice_interview(
                     continue
                 
                 if not is_recording_audio:
-                    logger.warning("audio_end received but not recording")
+                    logger.warning(
+                        "audio_end received but not recording - ignoring duplicate message",
+                        current_question_id=current_question_id,
+                        audio_buffer_size=audio_buffer.tell()
+                    )
                     continue
                 
                 if interview is None:
@@ -450,10 +454,270 @@ async def voice_interview(
                         )
                         continue
                     
-                    # Continue with answer processing (will jump to answer handling)
-                    message = {"type": "answer", "question_id": question_id, "text": answer_text}
-                    msg_type = "answer"
-                    # Fall through to answer handling
+                    # Process answer immediately (don't rely on fall-through since elif won't re-check)
+                    logger.info(
+                        "Transcription completed, processing answer immediately",
+                        question_id=question_id,
+                        answer_length=len(answer_text),
+                        questions_asked=questions_asked
+                    )
+                    
+                    # Process answer directly here - can't use fall-through because elif conditions
+                    # are only checked at the start of the if/elif chain
+                    
+                    # Validate question_id and answer_text
+                    if not question_id or not answer_text:
+                        logger.warning("Answer missing required fields after transcription", question_id=question_id, has_text=bool(answer_text))
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    "type": "error",
+                                    "message": "Missing question or answer data. Please try again.",
+                                }
+                            )
+                        )
+                        continue
+                    
+                    # Analyze response and store it (with timeout)
+                    logger.info("Starting response analysis", question_id=question_id, questions_asked=questions_asked)
+                    try:
+                        analysis = await asyncio.wait_for(
+                            interview_ai.process_response(
+                                UUID(interview["id"]),
+                                UUID(question_id),
+                                answer_text,
+                                job_description or {},
+                                cv_text,
+                            ),
+                            timeout=45.0  # 45 second timeout for response analysis
+                        )
+                        
+                        # Update response with audio path if available (for voice mode)
+                        if interview_mode == "voice" and question_id in response_audio_paths:
+                            audio_path = response_audio_paths[question_id]
+                            # Find the most recent response for this question and update it
+                            db.service_client.table("interview_responses").update({
+                                "response_audio_path": audio_path
+                            }).eq("interview_id", str(interview["id"])).eq("question_id", question_id).order("created_at", desc=True).limit(1).execute()
+                            logger.info("Updated response with audio path", question_id=question_id, audio_path=audio_path)
+                            # Remove from tracking dict
+                            del response_audio_paths[question_id]
+
+                        # Update / create interview-level report (non-blocking for UX if it fails)
+                        try:
+                            await InterviewReportService.upsert_from_analysis(
+                                UUID(interview["id"]),
+                                analysis,
+                            )
+                        except Exception as report_err:
+                            logger.warning("Failed to update interview report", error=str(report_err), interview_id=str(interview["id"]))
+
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    "type": "analysis",
+                                    "question_id": question_id,
+                                    "analysis": analysis,
+                                }
+                            )
+                        )
+                    except asyncio.TimeoutError:
+                        logger.error("Timeout analyzing response", ticket_code=ticket_code, question_id=question_id)
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    "type": "error",
+                                    "message": "The AI is taking longer than expected to analyze your response. We'll continue with the next question.",
+                                }
+                            )
+                        )
+                        # Continue to next question even if analysis timed out
+                        analysis = {"quality": "adequate", "response_quality": "adequate"}
+                    except Exception as e:
+                        logger.error("Error analyzing response", error=str(e), ticket_code=ticket_code, question_id=question_id, exc_info=True)
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    "type": "error",
+                                    "message": "An error occurred while analyzing your response. We'll continue with the next question.",
+                                }
+                            )
+                        )
+                        # Continue to next question even if analysis failed
+                        analysis = {"quality": "adequate", "response_quality": "adequate"}
+
+                    # Check if we're at the question limit
+                    if questions_asked >= MAX_QUESTIONS:
+                        # Ask for final message from candidate
+                        waiting_for_final_message = True
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    "type": "final_message_request",
+                                    "message": "We're coming to the end of our interview. Is there anything else you'd like to share with us, or any questions you have about the role or our organization?",
+                                }
+                            )
+                        )
+                        continue
+
+                    # Warn candidate if next question will be the last one
+                    if questions_asked == MAX_QUESTIONS - 1:
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    "type": "info",
+                                    "message": "Just a heads up - we have one more question, and then we'll wrap up the interview.",
+                                }
+                            )
+                        )
+
+                    response_quality = analysis.get("quality") or analysis.get("response_quality", "adequate")
+                    non_answer_type = analysis.get("non_answer_type")  # Extract non-answer type if detected
+                    
+                    logger.info(
+                        "Starting follow-up question generation",
+                        question_id=question_id,
+                        questions_asked=questions_asked,
+                        max_questions=MAX_QUESTIONS,
+                        response_quality=response_quality
+                    )
+                    
+                    try:
+                        followup = await asyncio.wait_for(
+                            interview_ai.generate_followup_question(
+                                UUID(interview["id"]),
+                                job_description or {},
+                                cv_text,
+                                UUID(question_id),
+                                response_quality,
+                                answer_text,  # Pass the candidate's response text
+                                non_answer_type  # Pass non-answer type if detected
+                            ),
+                            timeout=45.0  # 45 second timeout for follow-up question generation
+                        )
+                        logger.info(
+                            "Follow-up question generated successfully",
+                            followup_question_id=followup.get("id") if followup else None,
+                            has_followup=bool(followup)
+                        )
+                        
+                        if followup:
+                            questions_asked += 1
+                            current_question_id = followup["id"]
+                            question_text = followup["question_text"]
+                            
+                            # Send question (text mode) or generate audio (voice mode)
+                            if interview_mode == "voice":
+                                # Generate TTS audio for question
+                                try:
+                                    await websocket.send_text(
+                                        json.dumps({"type": "audio_question_start"})
+                                    )
+                                    
+                                    # Generate audio
+                                    logger.info("Starting TTS synthesis for followup", question_id=followup["id"], text_length=len(question_text))
+                                    audio_bytes = await tts.synthesize(question_text)
+                                    
+                                    # Validate audio bytes
+                                    if not audio_bytes:
+                                        raise ValueError("TTS returned empty audio bytes")
+                                    if not isinstance(audio_bytes, bytes):
+                                        raise TypeError(f"TTS returned wrong type: {type(audio_bytes)}, expected bytes")
+                                    
+                                    logger.info(
+                                        "TTS synthesis successful, sending audio",
+                                        question_id=followup["id"],
+                                        audio_size=len(audio_bytes),
+                                        audio_type=type(audio_bytes).__name__
+                                    )
+                                    
+                                    # Check WebSocket state before sending
+                                    if websocket.client_state != WebSocketState.CONNECTED:
+                                        raise ConnectionError(f"WebSocket not connected, state: {websocket.client_state}")
+                                    
+                                    # Send audio as binary
+                                    await websocket.send_bytes(audio_bytes)
+                                    logger.info("Audio bytes sent successfully", question_id=followup["id"], bytes_sent=len(audio_bytes))
+                                    
+                                    await websocket.send_text(
+                                        json.dumps({"type": "audio_question_end"})
+                                    )
+                                    
+                                    # Also send text for display/accessibility
+                                    await websocket.send_text(
+                                        json.dumps(
+                                            {
+                                                "type": "question",
+                                                "question_id": followup["id"],
+                                                "text": question_text,
+                                            }
+                                        )
+                                    )
+                                    logger.info("Follow-up question sent successfully with audio", question_id=followup["id"])
+                                except Exception as e:
+                                    logger.error(
+                                        "TTS or audio sending failed for followup, falling back to text",
+                                        error=str(e),
+                                        error_type=type(e).__name__,
+                                        question_id=followup["id"],
+                                        exc_info=True
+                                    )
+                                    # Fallback to text if TTS fails
+                                    await websocket.send_text(
+                                        json.dumps(
+                                            {
+                                                "type": "question",
+                                                "question_id": followup["id"],
+                                                "text": question_text,
+                                            }
+                                        )
+                                    )
+                            else:
+                                # Text mode - send text only
+                                await websocket.send_text(
+                                    json.dumps(
+                                        {
+                                            "type": "question",
+                                            "question_id": followup["id"],
+                                            "text": question_text,
+                                        }
+                                    )
+                                )
+                        else:
+                            # If no followup generated, end interview gracefully
+                            waiting_for_final_message = True
+                            await websocket.send_text(
+                                json.dumps(
+                                    {
+                                        "type": "final_message_request",
+                                        "message": "We're coming to the end of our interview. Is there anything else you'd like to share with us, or any questions you have about the role or our organization?",
+                                    }
+                                )
+                            )
+                    except asyncio.TimeoutError:
+                        logger.error("Timeout generating follow-up question", ticket_code=ticket_code, question_id=question_id)
+                        # End interview gracefully if we can't generate next question
+                        waiting_for_final_message = True
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    "type": "final_message_request",
+                                    "message": "We're coming to the end of our interview. Is there anything else you'd like to share with us, or any questions you have about the role or our organization?",
+                                }
+                            )
+                        )
+                    except Exception as e:
+                        logger.error("Error generating follow-up question", error=str(e), ticket_code=ticket_code, question_id=question_id, exc_info=True)
+                        # End interview gracefully if we can't generate next question
+                        waiting_for_final_message = True
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    "type": "final_message_request",
+                                    "message": "We're coming to the end of our interview. Is there anything else you'd like to share with us, or any questions you have about the role or our organization?",
+                                }
+                            )
+                        )
                     
                 except Exception as e:
                     logger.error("STT transcription failed", error=str(e), exc_info=True)
@@ -468,6 +732,13 @@ async def voice_interview(
                     continue
 
             elif msg_type == "answer":
+                logger.info(
+                    "Processing answer message",
+                    question_id=message.get("question_id"),
+                    answer_length=len(message.get("text", "")),
+                    interview_started=interview is not None
+                )
+                
                 if interview is None:
                     await websocket.send_text(
                         json.dumps(
@@ -483,6 +754,7 @@ async def voice_interview(
                 answer_text = message.get("text") or ""
 
                 if not question_id or not answer_text:
+                    logger.warning("Answer message missing required fields", question_id=question_id, has_text=bool(answer_text))
                     await websocket.send_text(
                         json.dumps(
                             {
@@ -494,6 +766,7 @@ async def voice_interview(
                     continue
 
                 # Analyze response and store it (with timeout)
+                logger.info("Starting response analysis", question_id=question_id, questions_asked=questions_asked)
                 try:
                     analysis = await asyncio.wait_for(
                         interview_ai.process_response(
@@ -587,6 +860,15 @@ async def voice_interview(
 
                 response_quality = analysis.get("quality") or analysis.get("response_quality", "adequate")
                 non_answer_type = analysis.get("non_answer_type")  # Extract non-answer type if detected
+                
+                logger.info(
+                    "Starting follow-up question generation",
+                    question_id=question_id,
+                    questions_asked=questions_asked,
+                    max_questions=MAX_QUESTIONS,
+                    response_quality=response_quality
+                )
+                
                 try:
                     followup = await asyncio.wait_for(
                         interview_ai.generate_followup_question(
@@ -599,6 +881,11 @@ async def voice_interview(
                             non_answer_type  # Pass non-answer type if detected
                         ),
                         timeout=45.0  # 45 second timeout for follow-up question generation
+                    )
+                    logger.info(
+                        "Follow-up question generated successfully",
+                        followup_question_id=followup.get("id") if followup else None,
+                        has_followup=bool(followup)
                     )
 
                     if followup:

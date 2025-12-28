@@ -25,9 +25,9 @@ export function VoiceRecorder({
   const audioChunksRef = useRef<Blob[]>([])
   const streamRef = useRef<MediaStream | null>(null)
 
-  // Check microphone permission on mount
+  // Check microphone permission status (non-blocking, doesn't trigger prompt)
   useEffect(() => {
-    checkMicrophonePermission()
+    checkPermissionStatus()
   }, [])
 
   // Cleanup on unmount
@@ -40,20 +40,51 @@ export function VoiceRecorder({
     }
   }, [])
 
-  const checkMicrophonePermission = async () => {
+  // Check permission status without triggering prompt (using Permissions API if available)
+  const checkPermissionStatus = async () => {
     try {
+      // Use Permissions API if available (doesn't trigger prompt)
+      if (navigator.permissions && navigator.permissions.query) {
+        const result = await navigator.permissions.query({ name: 'microphone' as PermissionName })
+        setHasPermission(result.state === 'granted')
+        // Listen for permission changes
+        result.onchange = () => {
+          setHasPermission(result.state === 'granted')
+          if (result.state === 'denied') {
+            setError('Microphone permission denied. Please allow microphone access in your browser settings.')
+          } else {
+            setError(null)
+          }
+        }
+      } else {
+        // Permissions API not available, set to null (unknown)
+        setHasPermission(null)
+      }
+    } catch (err) {
+      // Permissions API might not be supported, that's okay
+      setHasPermission(null)
+    }
+  }
+
+  // Request microphone permission (only called on user click)
+  const requestMicrophonePermission = async () => {
+    try {
+      setError(null)
+      // This will trigger the browser permission prompt (requires user gesture)
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       stream.getTracks().forEach(track => track.stop()) // Stop immediately, just checking permission
       setHasPermission(true)
+      return true
     } catch (err: any) {
       setHasPermission(false)
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setError('Microphone permission denied. Please allow microphone access and refresh the page.')
+        setError('Microphone permission denied. Please allow microphone access and try again.')
       } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-        setError('No microphone found. Please connect a microphone and refresh the page.')
+        setError('No microphone found. Please connect a microphone and try again.')
       } else {
         setError('Failed to access microphone. Please check your browser settings.')
       }
+      return false
     }
   }
 
@@ -63,7 +94,8 @@ export function VoiceRecorder({
     try {
       setError(null)
       
-      // Get microphone stream
+      // Request microphone access (this will trigger browser permission prompt on first use)
+      // Browsers require a user gesture (click) to show the permission prompt
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -71,6 +103,9 @@ export function VoiceRecorder({
           autoGainControl: true,
         },
       })
+      
+      // If we got here, permission was granted
+      setHasPermission(true)
       
       streamRef.current = stream
       audioChunksRef.current = []
@@ -121,8 +156,19 @@ export function VoiceRecorder({
       
     } catch (err: any) {
       console.error('Failed to start recording', err)
-      setError('Failed to start recording. Please try again.')
       setIsRecording(false)
+      setHasPermission(false)
+      
+      // Provide specific error messages
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setError('Microphone permission denied. Please allow microphone access and try again.')
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        setError('No microphone found. Please connect a microphone and try again.')
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        setError('Microphone is being used by another application. Please close other apps and try again.')
+      } else {
+        setError('Failed to access microphone. Please check your browser settings and try again.')
+      }
     }
   }
 
@@ -135,15 +181,21 @@ export function VoiceRecorder({
 
   const recording = isRecording || externalIsRecording
 
-  if (hasPermission === false) {
+  // Show error state if permission was explicitly denied
+  if (hasPermission === false && error) {
     return (
       <div className="flex flex-col items-center gap-2 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
         <MicOff className="w-5 h-5 text-red-600 dark:text-red-400" />
-        <p className="text-sm text-red-700 dark:text-red-400 text-center">{error || 'Microphone access required'}</p>
+        <p className="text-sm text-red-700 dark:text-red-400 text-center">{error}</p>
         <Button
           variant="primary"
           size="sm"
-          onClick={checkMicrophonePermission}
+          onClick={async () => {
+            const granted = await requestMicrophonePermission()
+            if (granted) {
+              startRecording()
+            }
+          }}
           className="mt-2"
         >
           Retry

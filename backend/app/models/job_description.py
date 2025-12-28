@@ -17,6 +17,7 @@ class JobDescriptionBase(BaseModel):
     location: Optional[str] = None
     employment_type: Optional[str] = None  # full-time, part-time, contract, etc.
     experience_level: Optional[str] = None  # junior, mid, senior
+    interview_mode: str = "text"  # "text" or "voice" - determines interview mode for all tickets
     
     @field_validator('requirements', 'location', 'employment_type', 'experience_level', mode='before')
     @classmethod
@@ -40,6 +41,7 @@ class JobDescriptionUpdate(BaseModel):
     location: Optional[str] = None
     employment_type: Optional[str] = None
     experience_level: Optional[str] = None
+    interview_mode: Optional[str] = None  # "text" or "voice"
     is_active: Optional[bool] = None
     hiring_status: Optional[str] = None  # active, screening, interviewing, filled, closed
 

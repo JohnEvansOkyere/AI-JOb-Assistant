@@ -13,7 +13,7 @@ import { apiClient } from '@/lib/api/client'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { JobDescription } from '@/types'
-import { Check, Copy } from 'lucide-react'
+import { Check, Copy, Type, Mic } from 'lucide-react'
 import { StageConfiguration } from '@/components/interview-stages/StageConfiguration'
 
 export default function JobDetailPage() {
@@ -224,6 +224,20 @@ export default function JobDetailPage() {
                   <p className="text-gray-900 capitalize">{job.experience_level}</p>
                 </div>
               )}
+              <div>
+                <p className="text-sm font-medium text-gray-500">Interview Mode</p>
+                {job.interview_mode === 'voice' ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-sm bg-blue-100 text-blue-800">
+                    <Mic className="w-3 h-3" />
+                    Voice
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-sm bg-gray-100 text-gray-800">
+                    <Type className="w-3 h-3" />
+                    Text
+                  </span>
+                )}
+              </div>
               <div>
                 <p className="text-sm font-medium text-gray-500">Status</p>
                 <span className={`inline-block px-2 py-1 rounded text-sm ${

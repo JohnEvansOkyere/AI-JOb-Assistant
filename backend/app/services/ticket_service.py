@@ -37,7 +37,7 @@ class TicketService:
         job_description_id: UUID,
         created_by: UUID,
         expires_in_hours: Optional[int] = None,
-        interview_mode: str = "text"
+        interview_mode: Optional[str] = None  # If None, inherit from job description
     ) -> dict:
         """
         Create a new interview ticket
@@ -47,12 +47,22 @@ class TicketService:
             job_description_id: Job description ID
             created_by: Recruiter ID who created the ticket
             expires_in_hours: Optional expiration time in hours
-            interview_mode: Interview mode - "text" or "voice" (default: "text")
+            interview_mode: Interview mode - "text" or "voice". If None, inherits from job description.
         
         Returns:
             Created ticket with ticket code
         """
         try:
+            # If interview_mode not provided, get it from job description
+            if interview_mode is None:
+                job_response = db.service_client.table("job_descriptions").select("interview_mode").eq(
+                    "id", str(job_description_id)
+                ).execute()
+                if job_response.data:
+                    interview_mode = job_response.data[0].get("interview_mode", "text")
+                else:
+                    interview_mode = "text"  # Default fallback
+            
             # Generate unique ticket code
             ticket_code = TicketService.generate_ticket_code()
             

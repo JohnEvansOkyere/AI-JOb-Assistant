@@ -47,6 +47,7 @@ export default function InterviewPage() {
   // Voice mode state
   const [isRecording, setIsRecording] = useState(false)
   const [currentQuestionAudio, setCurrentQuestionAudio] = useState<Blob | null>(null)
+  const [pendingQuestionAudio, setPendingQuestionAudio] = useState<Blob | null>(null) // Audio waiting for question ID
   const [isPlayingQuestion, setIsPlayingQuestion] = useState(false)
   const [lastTranscription, setLastTranscription] = useState<string | null>(null)
   
@@ -55,12 +56,16 @@ export default function InterviewPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const streamRef = useRef<MediaStream | null>(null)
+  const interviewModeRef = useRef<'text' | 'voice'>('text') // Use ref to track current mode for WebSocket handlers
+  const pendingQuestionAudioRef = useRef<Blob | null>(null) // Use ref to track audio for WebSocket handlers (avoid stale closures)
+  const currentQuestionAudioRef = useRef<Blob | null>(null) // Use ref for current question audio
 
   // Load ticket context (candidate, job, company) so the candidate always sees who they are interviewing with
   useEffect(() => {
     const loadContext = async () => {
       try {
-        const response = await apiClient.post<any>('/tickets/validate', { ticket_code: ticketCode })
+        // Backend expects ticket_code as query parameter, not in body
+        const response = await apiClient.post<any>(`/tickets/validate?ticket_code=${encodeURIComponent(ticketCode)}`)
         if (response.success && response.data) {
           const data = response.data
           if (!candidateName && data.candidate_name) {
@@ -75,6 +80,8 @@ export default function InterviewPage() {
           // Set interview mode from ticket
           if (data.interview_mode) {
             setInterviewMode(data.interview_mode)
+            interviewModeRef.current = data.interview_mode // Update ref immediately
+            console.log('Interview mode set to:', data.interview_mode)
           }
         }
       } catch (err) {
@@ -90,6 +97,19 @@ export default function InterviewPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, waitingForAI])
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    interviewModeRef.current = interviewMode
+  }, [interviewMode])
+  
+  useEffect(() => {
+    pendingQuestionAudioRef.current = pendingQuestionAudio
+  }, [pendingQuestionAudio])
+  
+  useEffect(() => {
+    currentQuestionAudioRef.current = currentQuestionAudio
+  }, [currentQuestionAudio])
 
   useEffect(() => {
     return () => {
@@ -112,8 +132,13 @@ export default function InterviewPage() {
     try {
       const wsUrl = API_URL.replace(/^http/, 'ws') + `/voice/interview/${ticketCode}`
       const socket = new WebSocket(wsUrl)
+      
+      // Set binary type to 'blob' to receive audio as Blob objects
+      // This is important for handling TTS audio from the server
+      socket.binaryType = 'blob'
 
       socket.onopen = () => {
+        console.log('WebSocket opened', { url: wsUrl, binaryType: socket.binaryType })
         setConnected(true)
         setConnecting(false)
         setWs(socket)
@@ -126,12 +151,95 @@ export default function InterviewPage() {
       }
 
       socket.onmessage = async (event) => {
+        console.log('WebSocket message received', {
+          dataType: typeof event.data,
+          isBlob: event.data instanceof Blob,
+          isArrayBuffer: event.data instanceof ArrayBuffer,
+          isString: typeof event.data === 'string',
+          interviewMode: interviewMode
+        })
+        
         // Handle binary audio messages
+        // WebSocket binary messages can come as Blob or ArrayBuffer depending on binaryType setting
         if (event.data instanceof Blob || event.data instanceof ArrayBuffer) {
-          if (interviewMode === 'voice' && isPlayingQuestion) {
+          console.log('Binary message detected', {
+            size: event.data instanceof Blob ? event.data.size : event.data.byteLength,
+            type: event.data instanceof Blob ? event.data.type : 'ArrayBuffer',
+            interviewMode: interviewMode,
+            interviewModeRef: interviewModeRef.current
+          })
+          
+          // Use ref value which is always current, not state which might be stale in closure
+          const currentMode = interviewModeRef.current
+          if (currentMode === 'voice' || interviewMode === 'voice') {
             // This is TTS audio for the question
-            const blob = event.data instanceof Blob ? event.data : new Blob([event.data])
-            setCurrentQuestionAudio(blob)
+            // Accept audio whenever in voice mode
+            // ElevenLabs returns MP3 audio, so set the correct MIME type
+            try {
+              let blob: Blob
+              if (event.data instanceof Blob) {
+                // If it's already a Blob, check if it has the correct type
+                if (event.data.type && event.data.type !== 'application/octet-stream' && event.data.type.startsWith('audio/')) {
+                  blob = event.data
+                  console.log('Using Blob as-is with type', event.data.type)
+                } else {
+                  // Recreate with correct MIME type (default to MP3 for TTS)
+                  blob = new Blob([event.data], { type: 'audio/mpeg' })
+                  console.log('Recreated Blob with audio/mpeg type')
+                }
+              } else if (event.data instanceof ArrayBuffer) {
+                // Create new Blob with MP3 MIME type (ElevenLabs returns MP3)
+                blob = new Blob([event.data], { type: 'audio/mpeg' })
+                console.log('Converted ArrayBuffer to Blob with audio/mpeg type')
+              } else {
+                console.error('Unexpected binary data type', typeof event.data, event.data)
+                return
+              }
+              
+              // Validate blob
+              if (blob.size === 0) {
+                console.error('Received empty audio blob - ignoring')
+                return
+              }
+              
+              console.log('Processing audio blob', {
+                size: blob.size,
+                type: blob.type,
+                currentQuestionId: currentQuestionId
+              })
+              
+              // Store in both state and ref (ref for immediate access in handlers, state for UI)
+              setPendingQuestionAudio(blob)
+              pendingQuestionAudioRef.current = blob
+              setCurrentQuestionAudio(blob)
+              currentQuestionAudioRef.current = blob
+              
+              console.log('Audio blob stored successfully', {
+                blobSize: blob.size,
+                blobType: blob.type,
+                currentQuestionId: currentQuestionId,
+                hasPendingRef: !!pendingQuestionAudioRef.current,
+                hasCurrentRef: !!currentQuestionAudioRef.current
+              })
+              
+              // If we have a current question, update the message with the audio blob
+              // This handles the case where audio arrives after the question text
+              if (currentQuestionId) {
+                setMessages((prev) => 
+                  prev.map((msg) => 
+                    msg.role === 'assistant' && msg.questionId === currentQuestionId && !msg.audioBlob
+                      ? { ...msg, audioBlob: blob }
+                      : msg
+                  )
+                )
+                console.log('Updated message with audio blob', { questionId: currentQuestionId })
+              }
+            } catch (error) {
+              console.error('Error processing audio blob', error)
+              setError('Failed to process audio. Please try refreshing the page.')
+            }
+          } else {
+            console.warn('Received binary audio but interview mode is not voice', { interviewMode })
           }
           return
         }
@@ -143,17 +251,53 @@ export default function InterviewPage() {
           if (data.type === 'question') {
             setWaitingForAI(false)
             setCurrentQuestionId(data.question_id)
+            
+            // Get the pending audio if available (audio can arrive before or after question text)
+            // Use refs to avoid stale closure issues - refs always have current values
+            const audioForQuestion = pendingQuestionAudioRef.current || currentQuestionAudioRef.current
+            
+            console.log('Question received - checking for audio', {
+              questionId: data.question_id,
+              hasPendingRef: !!pendingQuestionAudioRef.current,
+              hasCurrentRef: !!currentQuestionAudioRef.current,
+              pendingSize: pendingQuestionAudioRef.current?.size,
+              currentSize: currentQuestionAudioRef.current?.size,
+              audioAvailable: !!audioForQuestion
+            })
+            
             setMessages((prev) => [
               ...prev.filter(m => m.role !== 'system' || !m.text.includes('Connecting')),
-              { role: 'assistant', text: data.text, questionId: data.question_id },
+              { 
+                role: 'assistant', 
+                text: data.text, 
+                questionId: data.question_id,
+                audioBlob: audioForQuestion || undefined, // Store audio with the message
+              },
             ])
+            
+            // Clear audio state and refs after associating it with the question
+            // This ensures we get fresh audio for the next question
+            if (pendingQuestionAudioRef.current) {
+              setPendingQuestionAudio(null)
+              pendingQuestionAudioRef.current = null
+            }
+            // Only clear currentQuestionAudio if we used it
+            if (audioForQuestion === currentQuestionAudioRef.current) {
+              setCurrentQuestionAudio(null)
+              currentQuestionAudioRef.current = null
+            }
+            
+            console.log('Question received', data.question_id, 'Audio available:', !!audioForQuestion, 'size:', audioForQuestion?.size, 'type:', audioForQuestion?.type)
           } else if (data.type === 'audio_question_start') {
             // AI is about to speak - prepare for audio
+            // Don't clear audio here - it might already be in the buffer from previous question
+            // We'll clear it when we actually receive and use it for a question
             setIsPlayingQuestion(true)
-            setCurrentQuestionAudio(null) // Clear previous audio
+            console.log('Audio question starting - waiting for audio blob')
           } else if (data.type === 'audio_question_end') {
-            // AI finished speaking
-            setIsPlayingQuestion(false)
+            // AI finished speaking (audio transmission complete)
+            // Keep isPlayingQuestion true - we'll set it to false when audio actually plays
+            console.log('Audio question ended - audio transmission complete, waiting for question text')
           } else if (data.type === 'transcription') {
             // Received transcription of candidate's audio
             setLastTranscription(data.text)
@@ -466,12 +610,19 @@ export default function InterviewPage() {
                       </p>
                     </div>
                     {/* Show audio player for voice mode questions */}
-                    {interviewMode === 'voice' && m.questionId === currentQuestionId && currentQuestionAudio && (
+                    {interviewMode === 'voice' && m.questionId === currentQuestionId && (m.audioBlob || (m.questionId === currentQuestionId ? currentQuestionAudio : null)) && (
                       <AudioPlayer
-                        audioBlob={currentQuestionAudio}
+                        key={`audio-${m.questionId}-${m.audioBlob?.size || currentQuestionAudio?.size || 'none'}`}
+                        audioBlob={m.audioBlob || (m.questionId === currentQuestionId ? currentQuestionAudio || undefined : undefined)}
                         autoPlay={true}
-                        onPlayStart={() => setIsPlayingQuestion(true)}
-                        onPlayEnd={() => setIsPlayingQuestion(false)}
+                        onPlayStart={() => {
+                          setIsPlayingQuestion(true)
+                          console.log('Audio playback started for question', m.questionId)
+                        }}
+                        onPlayEnd={() => {
+                          setIsPlayingQuestion(false)
+                          console.log('Audio playback ended for question', m.questionId)
+                        }}
                       />
                     )}
                   </div>

@@ -36,7 +36,7 @@ export default function CreateTicketPage() {
   const [ticketCode, setTicketCode] = useState('')
   const [ticketId, setTicketId] = useState<string>('')
   const [expiresInHours, setExpiresInHours] = useState(48)
-  const [interviewMode, setInterviewMode] = useState<'text' | 'voice'>('text')
+  const [jobInterviewMode, setJobInterviewMode] = useState<'text' | 'voice' | null>(null)
   const [copiedCode, setCopiedCode] = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
   const [emailSent, setEmailSent] = useState(false)
@@ -85,10 +85,16 @@ export default function CreateTicketPage() {
         return
       }
 
+      // Get job to check interview mode
+      const jobResponse = await apiClient.get(`/job-descriptions/${jobId}`)
+      const job = jobResponse.data as any
+      const interviewMode = job?.interview_mode || 'text'
+      setJobInterviewMode(interviewMode)
+
       const response = await apiClient.post<{ ticket_code: string; id: string }>(`/tickets?expires_in_hours=${expiresInHours}&send_email=true`, {
         candidate_id: app.candidate_id,
-        job_description_id: jobId,
-        interview_mode: interviewMode
+        job_description_id: jobId
+        // interview_mode not needed - inherits from job
       })
       
       if (response.success && response.data) {
@@ -132,12 +138,17 @@ export default function CreateTicketPage() {
     }
   }
 
-  const handleCopyLink = async () => {
+  const handleCopyLink = async (isVoice: boolean = false) => {
     const link = getInterviewLink(jobId)
     const success = await copyToClipboard(link)
     if (success) {
-      setCopiedLink(true)
-      setTimeout(() => setCopiedLink(false), 2000)
+      if (isVoice) {
+        setCopiedVoiceLink(true)
+        setTimeout(() => setCopiedVoiceLink(false), 2000)
+      } else {
+        setCopiedLink(true)
+        setTimeout(() => setCopiedLink(false), 2000)
+      }
     }
   }
 
@@ -202,29 +213,77 @@ export default function CreateTicketPage() {
                     )}
                   </button>
                 </div>
+                {/* Interview Mode Badge */}
+                {jobInterviewMode && (
+                  <div className="mt-4 flex items-center justify-center gap-2">
+                    <span className="text-sm text-gray-600">Interview Mode (inherited from job):</span>
+                    {jobInterviewMode === 'voice' ? (
+                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-700">
+                        <Mic className="w-4 h-4" />
+                        Voice Interview
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-700">
+                        <Type className="w-4 h-4" />
+                        Text Interview
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Interview Link */}
+              {/* Interview Links */}
               <div className="border-t pt-6">
-                <p className="text-sm text-gray-600 mb-3 text-center">Interview Link</p>
-                <div className="flex items-center gap-2 mb-4 bg-gray-50 rounded-lg p-3 border border-gray-200">
-                  <LinkIcon className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                  <p className="text-sm text-gray-700 flex-1 truncate font-mono">{interviewLink}</p>
-                  <button
-                    onClick={handleCopyLink}
-                    className="p-1.5 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
-                    title="Copy interview link"
-                  >
-                    {copiedLink ? (
-                      <Check className="w-4 h-4 text-green-600" />
-                    ) : (
-                      <Copy className="w-4 h-4 text-gray-600" />
-                    )}
-                  </button>
-                </div>
-                <p className="text-xs text-gray-500 text-center mb-6">
-                  Share this link with all candidates for this job position. Each candidate will enter their unique ticket code to start their interview.
+                <p className="text-sm text-gray-600 mb-3 text-center font-medium">Interview Links</p>
+                <p className="text-xs text-gray-500 text-center mb-4">
+                  Share the appropriate link with the candidate. They will use the same ticket code regardless of which link they use.
                 </p>
+                
+                {/* Text Interview Link */}
+                <div className="mb-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Type className="w-4 h-4 text-gray-600" />
+                    <span className="text-xs font-medium text-gray-700">Text Interview Link</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-3 border border-gray-200">
+                    <LinkIcon className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                    <p className="text-sm text-gray-700 flex-1 truncate font-mono">{interviewLink}</p>
+                    <button
+                      onClick={() => handleCopyLink(false)}
+                      className="p-1.5 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+                      title="Copy text interview link"
+                    >
+                      {copiedLink ? (
+                        <Check className="w-4 h-4 text-green-600" />
+                      ) : (
+                        <Copy className="w-4 h-4 text-gray-600" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Voice Interview Link */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Mic className="w-4 h-4 text-blue-600" />
+                    <span className="text-xs font-medium text-gray-700">Voice Interview Link</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-blue-50 rounded-lg p-3 border border-blue-200">
+                    <LinkIcon className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                    <p className="text-sm text-blue-700 flex-1 truncate font-mono">{interviewLink}</p>
+                    <button
+                      onClick={() => handleCopyLink(true)}
+                      className="p-1.5 hover:bg-blue-100 rounded transition-colors flex-shrink-0"
+                      title="Copy voice interview link"
+                    >
+                      {copiedVoiceLink ? (
+                        <Check className="w-4 h-4 text-green-600" />
+                      ) : (
+                        <Copy className="w-4 h-4 text-blue-600" />
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
               
               {/* Send Email Section */}
@@ -281,18 +340,35 @@ export default function CreateTicketPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={handleCopyLink}
+                  onClick={() => handleCopyLink(false)}
                   className="flex items-center gap-2"
                 >
                   {copiedLink ? (
                     <>
                       <Check className="w-4 h-4" />
-                      <span>Link Copied!</span>
+                      <span>Text Link Copied!</span>
                     </>
                   ) : (
                     <>
-                      <LinkIcon className="w-4 h-4" />
-                      <span>Copy Link</span>
+                      <Type className="w-4 h-4" />
+                      <span>Copy Text Link</span>
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => handleCopyLink(true)}
+                  className="flex items-center gap-2"
+                >
+                  {copiedVoiceLink ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Voice Link Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Mic className="w-4 h-4" />
+                      <span>Copy Voice Link</span>
                     </>
                   )}
                 </Button>
@@ -343,98 +419,6 @@ export default function CreateTicketPage() {
               helperText="How long the ticket will be valid (default: 48 hours)"
             />
 
-            {/* Interview Mode Selection */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                Interview Mode
-              </label>
-              <div className="grid grid-cols-2 gap-4">
-                <button
-                  type="button"
-                  onClick={() => setInterviewMode('text')}
-                  className={`p-4 rounded-lg border-2 transition-all ${
-                    interviewMode === 'text'
-                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${
-                      interviewMode === 'text'
-                        ? 'bg-blue-100 dark:bg-blue-800'
-                        : 'bg-gray-100 dark:bg-gray-700'
-                    }`}>
-                      <Type className={`w-5 h-5 ${
-                        interviewMode === 'text'
-                          ? 'text-blue-600 dark:text-blue-400'
-                          : 'text-gray-600 dark:text-gray-400'
-                      }`} />
-                    </div>
-                    <div className="text-left">
-                      <div className={`font-semibold ${
-                        interviewMode === 'text'
-                          ? 'text-blue-900 dark:text-blue-300'
-                          : 'text-gray-900 dark:text-gray-100'
-                      }`}>
-                        Text Interview
-                      </div>
-                      <div className={`text-sm ${
-                        interviewMode === 'text'
-                          ? 'text-blue-700 dark:text-blue-400'
-                          : 'text-gray-600 dark:text-gray-400'
-                      }`}>
-                        Candidates type their answers
-                      </div>
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setInterviewMode('voice')}
-                  className={`p-4 rounded-lg border-2 transition-all ${
-                    interviewMode === 'voice'
-                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${
-                      interviewMode === 'voice'
-                        ? 'bg-blue-100 dark:bg-blue-800'
-                        : 'bg-gray-100 dark:bg-gray-700'
-                    }`}>
-                      <Mic className={`w-5 h-5 ${
-                        interviewMode === 'voice'
-                          ? 'text-blue-600 dark:text-blue-400'
-                          : 'text-gray-600 dark:text-gray-400'
-                      }`} />
-                    </div>
-                    <div className="text-left">
-                      <div className={`font-semibold ${
-                        interviewMode === 'voice'
-                          ? 'text-blue-900 dark:text-blue-300'
-                          : 'text-gray-900 dark:text-gray-100'
-                      }`}>
-                        Voice Interview
-                      </div>
-                      <div className={`text-sm ${
-                        interviewMode === 'voice'
-                          ? 'text-blue-700 dark:text-blue-400'
-                          : 'text-gray-600 dark:text-gray-400'
-                      }`}>
-                        Candidates speak their answers
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                {interviewMode === 'voice' 
-                  ? 'Voice interviews require a microphone and modern browser. Questions will be read aloud.'
-                  : 'Text interviews work on all devices. Candidates type their responses.'}
-              </p>
-            </div>
 
             <div className="flex gap-4">
               <Button

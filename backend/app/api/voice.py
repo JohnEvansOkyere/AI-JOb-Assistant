@@ -81,6 +81,11 @@ async def voice_interview(
             ticket = await TicketService.validate_ticket(ticket_code)
             # Get interview mode from ticket
             interview_mode = ticket.get("interview_mode", "text")
+            logger.info(
+                "WebSocket connected for interview",
+                ticket_code=ticket_code,
+                interview_mode=interview_mode
+            )
         except NotFoundError:
             await websocket.send_text(json.dumps({"type": "error", "message": "Invalid ticket code"}))
             await websocket.close()
@@ -96,8 +101,8 @@ async def voice_interview(
             # Receive message (can be text or binary)
             message_data = await websocket.receive()
             
-            # Handle binary audio chunks
-            if message_data.get("type") == "websocket.receive.bytes":
+            # Handle binary audio chunks - check for bytes key or bytes type
+            if "bytes" in message_data or message_data.get("type") == "websocket.receive.bytes":
                 if interview_mode == "voice" and is_recording_audio:
                     # Accumulate audio chunk in buffer
                     audio_chunk = message_data.get("bytes", b"")
@@ -108,9 +113,15 @@ async def voice_interview(
                     logger.warning("Received binary message but not in voice recording mode", interview_mode=interview_mode, is_recording=is_recording_audio)
                 continue
             
-            # Handle text messages
-            if message_data.get("type") != "websocket.receive.text":
-                logger.warning("Unexpected message type", msg_type=message_data.get("type"))
+            # Handle text messages - check for text key (more reliable than type string)
+            if "text" not in message_data and message_data.get("type") != "websocket.receive.text":
+                # Log full message_data for debugging unexpected types
+                logger.warning(
+                    "Unexpected message type",
+                    msg_type=message_data.get("type"),
+                    message_keys=list(message_data.keys()) if isinstance(message_data, dict) else None,
+                    interview_mode=interview_mode
+                )
                 continue
             
             raw = message_data.get("text", "")
@@ -182,10 +193,30 @@ async def voice_interview(
                                     )
                                     
                                     # Generate audio
+                                    logger.info("Starting TTS synthesis", question_id=first_q["id"], text_length=len(question_text))
                                     audio_bytes = await tts.synthesize(question_text)
                                     
+                                    # Validate audio bytes
+                                    if not audio_bytes:
+                                        raise ValueError("TTS returned empty audio bytes")
+                                    if not isinstance(audio_bytes, bytes):
+                                        raise TypeError(f"TTS returned wrong type: {type(audio_bytes)}, expected bytes")
+                                    
+                                    logger.info(
+                                        "TTS synthesis successful, sending audio",
+                                        question_id=first_q["id"],
+                                        audio_size=len(audio_bytes),
+                                        audio_type=type(audio_bytes).__name__
+                                    )
+                                    
+                                    # Check WebSocket state before sending
+                                    if websocket.client_state != WebSocketState.CONNECTED:
+                                        raise ConnectionError(f"WebSocket not connected, state: {websocket.client_state}")
+                                    
                                     # Send audio as binary
+                                    # FastAPI/Starlette WebSocket send_bytes handles bytes directly
                                     await websocket.send_bytes(audio_bytes)
+                                    logger.info("Audio bytes sent successfully", question_id=first_q["id"], bytes_sent=len(audio_bytes))
                                     
                                     await websocket.send_text(
                                         json.dumps({"type": "audio_question_end"})
@@ -201,8 +232,15 @@ async def voice_interview(
                                             }
                                         )
                                     )
+                                    logger.info("Question sent successfully with audio", question_id=first_q["id"])
                                 except Exception as e:
-                                    logger.error("TTS failed, falling back to text", error=str(e))
+                                    logger.error(
+                                        "TTS or audio sending failed, falling back to text",
+                                        error=str(e),
+                                        error_type=type(e).__name__,
+                                        question_id=first_q["id"],
+                                        exc_info=True
+                                    )
                                     # Fallback to text if TTS fails
                                     await websocket.send_text(
                                         json.dumps(
@@ -577,10 +615,30 @@ async def voice_interview(
                                 )
                                 
                                 # Generate audio
+                                logger.info("Starting TTS synthesis for followup", question_id=followup["id"], text_length=len(question_text))
                                 audio_bytes = await tts.synthesize(question_text)
                                 
+                                # Validate audio bytes
+                                if not audio_bytes:
+                                    raise ValueError("TTS returned empty audio bytes")
+                                if not isinstance(audio_bytes, bytes):
+                                    raise TypeError(f"TTS returned wrong type: {type(audio_bytes)}, expected bytes")
+                                
+                                logger.info(
+                                    "TTS synthesis successful, sending audio",
+                                    question_id=followup["id"],
+                                    audio_size=len(audio_bytes),
+                                    audio_type=type(audio_bytes).__name__
+                                )
+                                
+                                # Check WebSocket state before sending
+                                if websocket.client_state != WebSocketState.CONNECTED:
+                                    raise ConnectionError(f"WebSocket not connected, state: {websocket.client_state}")
+                                
                                 # Send audio as binary
+                                # FastAPI/Starlette WebSocket send_bytes handles bytes directly
                                 await websocket.send_bytes(audio_bytes)
+                                logger.info("Audio bytes sent successfully", question_id=followup["id"], bytes_sent=len(audio_bytes))
                                 
                                 await websocket.send_text(
                                     json.dumps({"type": "audio_question_end"})
@@ -596,8 +654,15 @@ async def voice_interview(
                                         }
                                     )
                                 )
+                                logger.info("Followup question sent successfully with audio", question_id=followup["id"])
                             except Exception as e:
-                                logger.error("TTS failed, falling back to text", error=str(e))
+                                logger.error(
+                                    "TTS or audio sending failed, falling back to text",
+                                    error=str(e),
+                                    error_type=type(e).__name__,
+                                    question_id=followup["id"],
+                                    exc_info=True
+                                )
                                 # Fallback to text if TTS fails
                                 await websocket.send_text(
                                     json.dumps(

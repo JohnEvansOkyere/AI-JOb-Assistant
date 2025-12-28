@@ -13,6 +13,7 @@ import { apiClient } from '@/lib/api/client'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
+import { Type, Mic } from 'lucide-react'
 
 export default function NewJobPage() {
   const router = useRouter()
@@ -27,6 +28,7 @@ export default function NewJobPage() {
     location: '',
     employment_type: '',
     experience_level: '',
+    interview_mode: 'text' as 'text' | 'voice',
   })
 
   if (authLoading) {
@@ -64,6 +66,7 @@ export default function NewJobPage() {
         location: formData.location || null,
         employment_type: formData.employment_type || null,
         experience_level: formData.experience_level || null,
+        interview_mode: formData.interview_mode,
       }
 
       const response = await apiClient.post('/job-descriptions', payload)
@@ -183,6 +186,97 @@ export default function NewJobPage() {
                 <option value="mid">Mid-level</option>
                 <option value="senior">Senior</option>
               </select>
+            </div>
+
+            {/* Interview Mode Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                Interview Mode *
+              </label>
+              <p className="text-xs text-gray-500 mb-3">
+                Choose the interview mode for this job. All interview tickets created for this job will use this mode.
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, interview_mode: 'text' })}
+                  className={`p-4 rounded-lg border-2 transition-all ${
+                    formData.interview_mode === 'text'
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${
+                      formData.interview_mode === 'text'
+                        ? 'bg-blue-100 dark:bg-blue-800'
+                        : 'bg-gray-100 dark:bg-gray-700'
+                    }`}>
+                      <Type className={`w-5 h-5 ${
+                        formData.interview_mode === 'text'
+                          ? 'text-blue-600 dark:text-blue-400'
+                          : 'text-gray-600 dark:text-gray-400'
+                      }`} />
+                    </div>
+                    <div className="text-left">
+                      <div className={`font-semibold ${
+                        formData.interview_mode === 'text'
+                          ? 'text-blue-900 dark:text-blue-300'
+                          : 'text-gray-900 dark:text-gray-100'
+                      }`}>
+                        Text Interview
+                      </div>
+                      <div className={`text-sm ${
+                        formData.interview_mode === 'text'
+                          ? 'text-blue-700 dark:text-blue-400'
+                          : 'text-gray-600 dark:text-gray-400'
+                      }`}>
+                        Candidates type answers
+                      </div>
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, interview_mode: 'voice' })}
+                  className={`p-4 rounded-lg border-2 transition-all ${
+                    formData.interview_mode === 'voice'
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${
+                      formData.interview_mode === 'voice'
+                        ? 'bg-blue-100 dark:bg-blue-800'
+                        : 'bg-gray-100 dark:bg-gray-700'
+                    }`}>
+                      <Mic className={`w-5 h-5 ${
+                        formData.interview_mode === 'voice'
+                          ? 'text-blue-600 dark:text-blue-400'
+                          : 'text-gray-600 dark:text-gray-400'
+                      }`} />
+                    </div>
+                    <div className="text-left">
+                      <div className={`font-semibold ${
+                        formData.interview_mode === 'voice'
+                          ? 'text-blue-900 dark:text-blue-300'
+                          : 'text-gray-900 dark:text-gray-100'
+                      }`}>
+                        Voice Interview
+                      </div>
+                      <div className={`text-sm ${
+                        formData.interview_mode === 'voice'
+                          ? 'text-blue-700 dark:text-blue-400'
+                          : 'text-gray-600 dark:text-gray-400'
+                      }`}>
+                        Candidates speak answers
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              </div>
             </div>
 
             <div className="flex gap-4">

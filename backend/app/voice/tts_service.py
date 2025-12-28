@@ -91,21 +91,39 @@ class ElevenLabsTTS:
             )
             
             # Generate speech using ElevenLabs API
-            # The generate() function returns audio bytes (MP3 format)
-            audio_bytes = self.generate_func(
+            # The generate() function may return audio bytes or a generator/stream
+            audio_result = self.generate_func(
                 text=text,
                 voice=self.voice_id,
                 model="eleven_multilingual_v2"  # Use multilingual model for better language support
             )
             
             # Convert generator/stream to bytes if needed
-            if hasattr(audio_bytes, '__iter__') and not isinstance(audio_bytes, (bytes, bytearray)):
+            # ElevenLabs can return either bytes directly or an iterable generator
+            if isinstance(audio_result, bytes):
+                audio_bytes = audio_result
+            elif isinstance(audio_result, bytearray):
+                audio_bytes = bytes(audio_result)
+            elif hasattr(audio_result, '__iter__'):
                 # If it's a generator/stream, read all chunks
-                audio_chunks = list(audio_bytes)
-                audio_bytes = b''.join(
-                    chunk if isinstance(chunk, bytes) else bytes(chunk)
-                    for chunk in audio_chunks
-                )
+                audio_chunks = []
+                for chunk in audio_result:
+                    if isinstance(chunk, bytes):
+                        audio_chunks.append(chunk)
+                    elif isinstance(chunk, bytearray):
+                        audio_chunks.append(bytes(chunk))
+                    else:
+                        try:
+                            audio_chunks.append(bytes(chunk))
+                        except (TypeError, ValueError) as e:
+                            raise ValueError(f"Unable to convert audio chunk to bytes: {type(chunk)} - {e}")
+                audio_bytes = b''.join(audio_chunks)
+            else:
+                raise TypeError(f"Unexpected audio type from ElevenLabs: {type(audio_result)}")
+            
+            # Validate we got actual audio data
+            if not audio_bytes or len(audio_bytes) == 0:
+                raise ValueError("ElevenLabs returned empty audio data")
             
             logger.info(
                 "ElevenLabs TTS synthesis successful",

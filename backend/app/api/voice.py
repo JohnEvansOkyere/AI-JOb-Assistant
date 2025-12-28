@@ -496,10 +496,19 @@ async def voice_interview(
                         if interview_mode == "voice" and question_id in response_audio_paths:
                             audio_path = response_audio_paths[question_id]
                             # Find the most recent response for this question and update it
-                            db.service_client.table("interview_responses").update({
-                                "response_audio_path": audio_path
-                            }).eq("interview_id", str(interview["id"])).eq("question_id", question_id).order("created_at", desc=True).limit(1).execute()
-                            logger.info("Updated response with audio path", question_id=question_id, audio_path=audio_path)
+                            # Note: update() doesn't support order(), so we need to select first, then update
+                            try:
+                                response_query = db.service_client.table("interview_responses").select("id").eq("interview_id", str(interview["id"])).eq("question_id", question_id).order("created_at", desc=True).limit(1).execute()
+                                if response_query.data and len(response_query.data) > 0:
+                                    response_id = response_query.data[0]["id"]
+                                    db.service_client.table("interview_responses").update({
+                                        "response_audio_path": audio_path
+                                    }).eq("id", response_id).execute()
+                                    logger.info("Updated response with audio path", question_id=question_id, response_id=response_id, audio_path=audio_path)
+                                else:
+                                    logger.warning("No response found to update with audio path", question_id=question_id, interview_id=str(interview["id"]))
+                            except Exception as update_err:
+                                logger.warning("Failed to update response with audio path", question_id=question_id, error=str(update_err))
                             # Remove from tracking dict
                             del response_audio_paths[question_id]
 
@@ -783,10 +792,19 @@ async def voice_interview(
                     if interview_mode == "voice" and question_id in response_audio_paths:
                         audio_path = response_audio_paths[question_id]
                         # Find the most recent response for this question and update it
-                        db.service_client.table("interview_responses").update({
-                            "response_audio_path": audio_path
-                        }).eq("interview_id", str(interview["id"])).eq("question_id", question_id).order("created_at", desc=True).limit(1).execute()
-                        logger.info("Updated response with audio path", question_id=question_id, audio_path=audio_path)
+                        # Note: update() doesn't support order(), so we need to select first, then update
+                        try:
+                            response_query = db.service_client.table("interview_responses").select("id").eq("interview_id", str(interview["id"])).eq("question_id", question_id).order("created_at", desc=True).limit(1).execute()
+                            if response_query.data and len(response_query.data) > 0:
+                                response_id = response_query.data[0]["id"]
+                                db.service_client.table("interview_responses").update({
+                                    "response_audio_path": audio_path
+                                }).eq("id", response_id).execute()
+                                logger.info("Updated response with audio path", question_id=question_id, response_id=response_id, audio_path=audio_path)
+                            else:
+                                logger.warning("No response found to update with audio path", question_id=question_id, interview_id=str(interview["id"]))
+                        except Exception as update_err:
+                            logger.warning("Failed to update response with audio path", question_id=question_id, error=str(update_err))
                         # Remove from tracking dict
                         del response_audio_paths[question_id]
 

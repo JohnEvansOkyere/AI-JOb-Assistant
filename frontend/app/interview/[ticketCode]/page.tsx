@@ -110,6 +110,17 @@ export default function InterviewPage() {
   useEffect(() => {
     currentQuestionAudioRef.current = currentQuestionAudio
   }, [currentQuestionAudio])
+  
+  // Debug: Log state changes that affect recording button
+  useEffect(() => {
+    console.log('Recording button state changed', {
+      connected,
+      waitingForAI,
+      isPlayingQuestion,
+      interviewComplete,
+      canRecord: connected && !waitingForAI && !isPlayingQuestion && !interviewComplete
+    })
+  }, [connected, waitingForAI, isPlayingQuestion, interviewComplete])
 
   useEffect(() => {
     return () => {
@@ -500,12 +511,42 @@ export default function InterviewPage() {
   }
 
   const handleAudioStart = () => {
-    startRecording()
+    console.log('handleAudioStart called from VoiceRecorder - setting parent isRecording to true')
+    // VoiceRecorder handles recording internally
+    // Just update parent state to reflect recording has started
+    setIsRecording(true)
+    
+    // Send audio_start message to server
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      console.log('Sending audio_start message to server')
+      ws.send(JSON.stringify({ type: 'audio_start' }))
+    }
+  }
+
+  const handleAudioChunk = (audioChunk: Blob) => {
+    // Send audio chunk to server via WebSocket
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(audioChunk)
+    }
   }
 
   const handleAudioEnd = (audioBlob: Blob) => {
-    // Audio already sent in chunks, just stop recording
-    stopRecording()
+    console.log('handleAudioEnd called from VoiceRecorder', { 
+      blobSize: audioBlob.size,
+      currentIsRecording: isRecording 
+    })
+    
+    // VoiceRecorder has already stopped its own recording
+    // Just update parent state and send audio_end message
+    setIsRecording(false)
+    console.log('Parent isRecording set to false')
+    
+    // Send audio_end message to server
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      console.log('Sending audio_end message to server')
+      ws.send(JSON.stringify({ type: 'audio_end' }))
+      setWaitingForAI(true) // Wait for transcription
+    }
   }
 
   return (
@@ -620,8 +661,20 @@ export default function InterviewPage() {
                           console.log('Audio playback started for question', m.questionId)
                         }}
                         onPlayEnd={() => {
+                          console.log('AudioPlayer onPlayEnd called - current states before update', {
+                            isPlayingQuestion,
+                            waitingForAI,
+                            connected,
+                            interviewComplete
+                          })
                           setIsPlayingQuestion(false)
-                          console.log('Audio playback ended for question', m.questionId)
+                          // Ensure we're ready to accept recording after audio ends
+                          setWaitingForAI(false)
+                          console.log('Audio playback ended for question', m.questionId, '- States updated, Ready for recording')
+                          // Force a small delay to ensure state updates propagate
+                          setTimeout(() => {
+                            console.log('After state update delay - button should be enabled now')
+                          }, 100)
                         }}
                       />
                     )}
@@ -707,7 +760,18 @@ export default function InterviewPage() {
                 <VoiceRecorder
                   onAudioStart={handleAudioStart}
                   onAudioEnd={handleAudioEnd}
-                  disabled={!connected || waitingForAI || interviewComplete}
+                  onAudioChunk={handleAudioChunk}
+                  disabled={(() => {
+                    const isDisabled = !connected || waitingForAI || isPlayingQuestion || interviewComplete
+                    console.log('VoiceRecorder disabled check', {
+                      connected,
+                      waitingForAI,
+                      isPlayingQuestion,
+                      interviewComplete,
+                      isDisabled
+                    })
+                    return isDisabled
+                  })()}
                   isRecording={isRecording}
                 />
               </div>

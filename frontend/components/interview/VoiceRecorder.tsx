@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 interface VoiceRecorderProps {
   onAudioStart: () => void
   onAudioEnd: (audioBlob: Blob) => void
+  onAudioChunk?: (audioChunk: Blob) => void  // Optional callback for sending audio chunks in real-time
   disabled?: boolean
   isRecording?: boolean
 }
@@ -14,6 +15,7 @@ interface VoiceRecorderProps {
 export function VoiceRecorder({
   onAudioStart,
   onAudioEnd,
+  onAudioChunk,
   disabled = false,
   isRecording: externalIsRecording = false,
 }: VoiceRecorderProps) {
@@ -27,6 +29,24 @@ export function VoiceRecorder({
 
   // Check microphone permission status (non-blocking, doesn't trigger prompt)
   useEffect(() => {
+    // Auto-redirect to localhost if accessing via IP address over HTTP
+    if (typeof window !== 'undefined') {
+      const isHttp = window.location.protocol === 'http:'
+      const isIpAddress = !window.location.hostname.includes('localhost') && 
+                          !window.location.hostname.includes('127.0.0.1') &&
+                          /^\d+\.\d+\.\d+\.\d+$/.test(window.location.hostname)
+      
+      if (isHttp && isIpAddress && (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)) {
+        const localhostUrl = window.location.href.replace(window.location.hostname, 'localhost')
+        console.log('Auto-redirecting to localhost for microphone access', {
+          from: window.location.href,
+          to: localhostUrl
+        })
+        window.location.href = localhostUrl
+        return
+      }
+    }
+    
     checkPermissionStatus()
   }, [])
 
@@ -70,6 +90,21 @@ export function VoiceRecorder({
   const requestMicrophonePermission = async () => {
     try {
       setError(null)
+      
+      // Check if MediaDevices API is available first
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        const isHttp = window.location.protocol === 'http:' && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')
+        if (isHttp) {
+          const currentUrl = window.location.href
+          const localhostUrl = currentUrl.replace(window.location.hostname, 'localhost')
+          setError(`Microphone access requires HTTPS or localhost. You're accessing via ${window.location.hostname} over HTTP. Please use: ${localhostUrl} (or http://127.0.0.1:${window.location.port}${window.location.pathname})`)
+        } else {
+          setError('Microphone access is not available in this browser. Please use a modern browser that supports the MediaDevices API.')
+        }
+        setHasPermission(false)
+        return false
+      }
+      
       // This will trigger the browser permission prompt (requires user gesture)
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       stream.getTracks().forEach(track => track.stop()) // Stop immediately, just checking permission
@@ -77,12 +112,36 @@ export function VoiceRecorder({
       return true
     } catch (err: any) {
       setHasPermission(false)
+      console.error('Microphone permission request failed', {
+        error: err,
+        name: err.name,
+        message: err.message,
+        stack: err.stack
+      })
+      
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setError('Microphone permission denied. Please allow microphone access and try again.')
+        setError(`Microphone permission denied. Please:
+1. Click the lock/info icon in your browser's address bar
+2. Allow microphone access
+3. Refresh the page and try again`)
       } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
         setError('No microphone found. Please connect a microphone and try again.')
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        setError('Microphone is being used by another application. Please close other apps and try again.')
+      } else if (err.name === 'TypeError' && err.message.includes('getUserMedia')) {
+        // This happens when navigator.mediaDevices is undefined
+        const isHttp = window.location.protocol === 'http:' && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')
+        if (isHttp) {
+          const localhostUrl = window.location.href.replace(window.location.hostname, 'localhost')
+          setError(`Cannot access microphone over HTTP from IP address. Redirecting to localhost...`)
+          setTimeout(() => {
+            window.location.href = localhostUrl
+          }, 2000)
+        } else {
+          setError('Microphone access not available. Please use a modern browser with microphone support.')
+        }
       } else {
-        setError('Failed to access microphone. Please check your browser settings.')
+        setError(`Failed to access microphone: ${err.message || err.name || 'Unknown error'}. Please check your browser settings.`)
       }
       return false
     }
@@ -94,8 +153,37 @@ export function VoiceRecorder({
     try {
       setError(null)
       
+      // Check if MediaDevices API is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        const isHttp = window.location.protocol === 'http:' && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')
+        if (isHttp) {
+          const currentUrl = window.location.href
+          const localhostUrl = currentUrl.replace(window.location.hostname, 'localhost')
+          // Auto-redirect to localhost if on IP address
+          console.warn('Redirecting to localhost for microphone access', { from: window.location.href, to: localhostUrl })
+          window.location.href = localhostUrl
+          return
+        } else {
+          setError('Microphone access is not available in this browser. Please use a modern browser that supports the MediaDevices API.')
+        }
+        console.error('MediaDevices API not available', {
+          hasMediaDevices: !!navigator.mediaDevices,
+          hasGetUserMedia: !!(navigator.mediaDevices?.getUserMedia),
+          protocol: window.location.protocol,
+          hostname: window.location.hostname
+        })
+        return
+      }
+      
       // Request microphone access (this will trigger browser permission prompt on first use)
       // Browsers require a user gesture (click) to show the permission prompt
+      console.log('Requesting microphone permission...', {
+        hasMediaDevices: !!navigator.mediaDevices,
+        hasGetUserMedia: !!(navigator.mediaDevices?.getUserMedia),
+        protocol: window.location.protocol,
+        hostname: window.location.hostname
+      })
+      
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -104,8 +192,14 @@ export function VoiceRecorder({
         },
       })
       
+      console.log('Microphone permission granted! Stream received', {
+        active: stream.active,
+        audioTracks: stream.getAudioTracks().length
+      })
+      
       // If we got here, permission was granted
       setHasPermission(true)
+      setError(null) // Clear any previous errors
       
       streamRef.current = stream
       audioChunksRef.current = []
@@ -125,22 +219,49 @@ export function VoiceRecorder({
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data)
+          // Send audio chunk in real-time if callback provided
+          if (onAudioChunk) {
+            console.log('Sending audio chunk via callback', { chunkSize: event.data.size })
+            onAudioChunk(event.data)
+          }
         }
       }
 
       mediaRecorder.onstop = () => {
+        console.log('MediaRecorder onstop event fired', {
+          chunksCount: audioChunksRef.current.length,
+          totalSize: audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0)
+        })
+        
         // Combine all audio chunks into a single blob
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType })
+        console.log('Audio blob created', {
+          blobSize: audioBlob.size,
+          blobType: audioBlob.type
+        })
+        
         audioChunksRef.current = []
         
         // Stop all tracks
         if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop())
+          streamRef.current.getTracks().forEach(track => {
+            track.stop()
+            console.log('Stopped audio track in onstop')
+          })
           streamRef.current = null
         }
 
-        // Call callback with audio blob
-        onAudioEnd(audioBlob)
+        // Update internal state first
+        setIsRecording(false)
+        console.log('VoiceRecorder internal isRecording set to false')
+        
+        // Call callback with audio blob - this will notify parent
+        console.log('Calling onAudioEnd callback with audio blob', { blobSize: audioBlob.size })
+        if (onAudioEnd) {
+          onAudioEnd(audioBlob)
+        } else {
+          console.warn('onAudioEnd callback is not defined!')
+        }
       }
 
       mediaRecorder.onerror = (event) => {
@@ -173,13 +294,113 @@ export function VoiceRecorder({
   }
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop()
+    console.log('=== stopRecording called ===', {
+      hasMediaRecorder: !!mediaRecorderRef.current,
+      isRecording,
+      externalIsRecording,
+      recording,
+      state: mediaRecorderRef.current?.state,
+      tracks: streamRef.current?.getTracks().length || 0
+    })
+    
+    try {
+      if (mediaRecorderRef.current) {
+        const state = mediaRecorderRef.current.state
+        console.log('MediaRecorder state:', state)
+        
+        // Stop the MediaRecorder if it's recording or paused
+        if (state === 'recording' || state === 'paused') {
+          console.log('Stopping MediaRecorder...')
+          mediaRecorderRef.current.stop()
+          console.log('MediaRecorder.stop() called successfully')
+        } else if (state === 'inactive') {
+          // MediaRecorder already stopped - might have stopped elsewhere
+          console.warn('MediaRecorder state is already inactive - creating blob from existing chunks')
+          // Create blob from existing chunks if any
+          if (audioChunksRef.current.length > 0) {
+            const mimeType = mediaRecorderRef.current.mimeType || 'audio/webm'
+            const audioBlob = new Blob(audioChunksRef.current, { type: mimeType })
+            console.log('Created blob from existing chunks', { blobSize: audioBlob.size })
+            // Call onAudioEnd if we have audio data
+            if (onAudioEnd && audioBlob.size > 0) {
+              onAudioEnd(audioBlob)
+            }
+          }
+        } else {
+          console.warn('MediaRecorder state is not recording or paused:', state)
+        }
+      } else {
+        console.warn('stopRecording: mediaRecorderRef.current is null')
+      }
+      
+      // Always stop audio tracks regardless of MediaRecorder state
+      if (streamRef.current) {
+        const tracks = streamRef.current.getTracks()
+        console.log('Stopping audio tracks:', tracks.length)
+        tracks.forEach((track, index) => {
+          track.stop()
+          console.log(`Stopped audio track ${index}:`, track.label)
+        })
+        streamRef.current = null
+      }
+      
+      // Always update state
       setIsRecording(false)
+      console.log('VoiceRecorder internal recording state set to false')
+      
+      // If MediaRecorder was already inactive or doesn't exist, ensure parent is notified
+      // This handles the case where MediaRecorder stopped before stopRecording was called
+      const currentState = mediaRecorderRef.current?.state
+      if ((!mediaRecorderRef.current || currentState === 'inactive') && onAudioEnd) {
+        // Check if we have chunks to create a blob
+        if (audioChunksRef.current.length > 0) {
+          const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm'
+          const audioBlob = new Blob(audioChunksRef.current, { type: mimeType })
+          console.log('Calling onAudioEnd with blob (MediaRecorder was already stopped)', { 
+            blobSize: audioBlob.size,
+            chunksCount: audioChunksRef.current.length 
+          })
+          onAudioEnd(audioBlob)
+        } else {
+          // No audio chunks, but still notify parent to update state
+          console.log('No audio chunks found, but notifying parent to update state')
+          onAudioEnd(new Blob([], { type: 'audio/webm' }))
+        }
+      } else if (currentState !== 'recording' && currentState !== 'paused' && onAudioEnd) {
+        // MediaRecorder is in some other state (like inactive) but onstop might not have fired
+        // Still notify parent to update state
+        console.log('MediaRecorder in unexpected state, notifying parent anyway', { state: currentState })
+        if (audioChunksRef.current.length > 0) {
+          const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm'
+          const audioBlob = new Blob(audioChunksRef.current, { type: mimeType })
+          onAudioEnd(audioBlob)
+        } else {
+          onAudioEnd(new Blob([], { type: 'audio/webm' }))
+        }
+      }
+    } catch (error) {
+      console.error('Error in stopRecording:', error)
+      // Still update state even if there's an error
+      setIsRecording(false)
+      // Try to notify parent to update state
+      if (onAudioEnd) {
+        console.log('Notifying parent of stopRecording error')
+        onAudioEnd(new Blob([], { type: 'audio/webm' }))
+      }
     }
   }
 
   const recording = isRecording || externalIsRecording
+
+  // Debug: Log when recording state changes
+  useEffect(() => {
+    console.log('VoiceRecorder recording state changed', {
+      isRecording,
+      externalIsRecording,
+      recording,
+      disabled
+    })
+  }, [isRecording, externalIsRecording, recording, disabled])
 
   // Show error state if permission was explicitly denied
   if (hasPermission === false && error) {
@@ -205,17 +426,31 @@ export function VoiceRecorder({
   }
 
   return (
-    <div className="flex flex-col items-center gap-3">
+    <div className="flex flex-col items-center gap-3" style={{ pointerEvents: 'auto', zIndex: 1 }}>
       {error && (
         <p className="text-sm text-red-600 dark:text-red-400 text-center">{error}</p>
       )}
       
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3" style={{ pointerEvents: 'auto' }}>
         {!recording ? (
           <Button
             variant="primary"
             onClick={startRecording}
-            disabled={disabled || hasPermission === false}
+            disabled={(() => {
+              // Only disable if:
+              // 1. Explicitly disabled from parent
+              // 2. Permission is explicitly denied (false) AND we're showing error state
+              // Don't disable if permission is null (unknown) - let user try to record
+              const isDisabled = disabled || (hasPermission === false && !!error)
+              console.log('VoiceRecorder button disabled check', {
+                disabled,
+                hasPermission,
+                error: error || 'none',
+                isDisabled,
+                finalDisabled: isDisabled
+              })
+              return isDisabled
+            })()}
             className="flex items-center gap-2 px-6 py-3"
             size="lg"
           >
@@ -223,16 +458,33 @@ export function VoiceRecorder({
             <span>Start Recording</span>
           </Button>
         ) : (
-          <Button
-            variant="primary"
-            onClick={stopRecording}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              console.log('=== Stop Recording button clicked ===', {
+                hasMediaRecorder: !!mediaRecorderRef.current,
+                isRecording,
+                externalIsRecording,
+                recording,
+                disabled,
+                timestamp: Date.now()
+              })
+              stopRecording()
+              console.log('Stop Recording button clicked - AFTER stopRecording call')
+            }}
             disabled={disabled}
-            className="flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700"
-            size="lg"
+            className="flex items-center justify-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ 
+              pointerEvents: disabled ? 'none' : 'auto', 
+              zIndex: 10,
+              cursor: disabled ? 'not-allowed' : 'pointer'
+            }}
           >
             <Square className="w-5 h-5" />
             <span>Stop Recording</span>
-          </Button>
+          </button>
         )}
       </div>
 

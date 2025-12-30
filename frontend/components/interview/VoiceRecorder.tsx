@@ -406,6 +406,33 @@ export function VoiceRecorder({
     })
   }, [isRecording, externalIsRecording, recording, disabled])
 
+  // Stop recording if component becomes disabled while recording
+  useEffect(() => {
+    if (disabled && recording) {
+      console.log('VoiceRecorder disabled while recording - stopping recording', {
+        disabled,
+        isRecording,
+        externalIsRecording,
+        recording
+      })
+      // Call stopRecording to ensure cleanup
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        try {
+          mediaRecorderRef.current.stop()
+        } catch (e) {
+          console.error('Error stopping MediaRecorder when disabled:', e)
+        }
+      }
+      // Stop all audio tracks
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop())
+        streamRef.current = null
+      }
+      // Update state
+      setIsRecording(false)
+    }
+  }, [disabled, recording])
+
   // Show error state if permission was explicitly denied
   if (hasPermission === false && error) {
     return (

@@ -98,12 +98,34 @@ class StorageService:
                 raise ValueError(f"Failed to upload interview audio: {error_str}")
     
     @staticmethod
+    def _sanitize_filename(name: str) -> str:
+        """
+        Sanitize a name for use in file paths
+        Replaces spaces with underscores and removes special characters
+        
+        Args:
+            name: Name to sanitize
+        
+        Returns:
+            Sanitized name safe for file paths
+        """
+        import re
+        # Replace spaces with underscores
+        name = name.replace(' ', '_')
+        # Remove special characters except underscores and hyphens
+        name = re.sub(r'[^a-zA-Z0-9_-]', '', name)
+        # Limit length to avoid very long paths
+        return name[:50] if len(name) > 50 else name
+    
+    @staticmethod
     async def upload_response_audio(
         interview_id: UUID,
         question_id: UUID,
         audio_bytes: bytes,
         response_index: int = 1,
-        file_extension: str = "webm"
+        file_extension: str = "webm",
+        candidate_name: Optional[str] = None,
+        question_order_index: Optional[int] = None
     ) -> str:
         """
         Upload individual response audio clip to Supabase Storage
@@ -114,6 +136,8 @@ class StorageService:
             audio_bytes: Audio file bytes
             response_index: Index of response (for multiple responses to same question)
             file_extension: File extension (webm, mp3, wav, etc.)
+            candidate_name: Optional candidate name for better file naming
+            question_order_index: Optional question order index (1-based) for better file naming
         
         Returns:
             Storage path (relative to bucket)
@@ -124,8 +148,15 @@ class StorageService:
         try:
             bucket_name = settings.supabase_storage_bucket_audio
             
-            # Create storage path: interviews/{interview_id}/responses/{question_id}_{index}.{ext}
-            storage_path = f"interviews/{interview_id}/responses/{question_id}_{response_index}.{file_extension}"
+            # Create storage path with improved naming if candidate_name and order_index are provided
+            if candidate_name and question_order_index is not None:
+                # Format: interviews/{interview_id}/responses/Q{order_index}_{candidate_name_sanitized}_{question_id_short}.{ext}
+                sanitized_name = StorageService._sanitize_filename(candidate_name)
+                question_id_short = str(question_id)[:8]  # First 8 chars of UUID
+                storage_path = f"interviews/{interview_id}/responses/Q{question_order_index}_{sanitized_name}_{question_id_short}.{file_extension}"
+            else:
+                # Fallback to old format for backward compatibility
+                storage_path = f"interviews/{interview_id}/responses/{question_id}_{response_index}.{file_extension}"
             
             # Determine content type
             content_type_map = {
@@ -198,6 +229,43 @@ class StorageService:
         """
         bucket_name = settings.supabase_storage_bucket_audio
         return db.service_client.storage.from_(bucket_name).get_public_url(storage_path)
+    
+    @staticmethod
+    def get_audio_signed_url(storage_path: str, expires_in: int = 3600) -> str:
+        """
+        Get signed URL for audio file in Supabase Storage (works with private buckets)
+        
+        Args:
+            storage_path: Storage path (relative to bucket)
+            expires_in: URL expiry time in seconds (default: 1 hour)
+        
+        Returns:
+            Signed URL for the audio file
+        """
+        bucket_name = settings.supabase_storage_bucket_audio
+        try:
+            signed_url_response = db.service_client.storage.from_(bucket_name).create_signed_url(
+                storage_path,
+                expires_in
+            )
+            # Handle both dict response and string response
+            if isinstance(signed_url_response, dict):
+                signed_url = signed_url_response.get("signedURL") or signed_url_response.get("url") or signed_url_response.get("signed_url")
+            else:
+                signed_url = signed_url_response
+            
+            if not signed_url:
+                raise ValueError("Failed to extract signed URL from response")
+            
+            return signed_url
+        except Exception as e:
+            logger.warning(
+                "Failed to generate signed URL, falling back to public URL",
+                storage_path=storage_path,
+                error=str(e)
+            )
+            # Fallback to public URL if signed URL generation fails
+            return db.service_client.storage.from_(bucket_name).get_public_url(storage_path)
     
     @staticmethod
     async def delete_interview_audio(interview_id: UUID) -> bool:

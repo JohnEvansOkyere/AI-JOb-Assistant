@@ -1,16 +1,16 @@
 """
-Interviews API Routes
-Interview session management endpoints
+Interview API Routes
+Handles interview management and operations
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from typing import Optional
 from uuid import UUID
 from app.schemas.common import Response
-from app.models.interview import Interview
+from app.models.interview import Interview, InterviewUpdate
 from app.services.interview_service import InterviewService
-from app.utils.auth import get_current_user, get_current_user_id
-from typing import Optional
+from app.utils.auth import get_current_user_id, get_current_user
+from app.database import db
 import structlog
 
 logger = structlog.get_logger()
@@ -18,32 +18,30 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/interviews", tags=["interviews"])
 
 
-@router.post("/start", response_model=Response[Interview], status_code=status.HTTP_201_CREATED)
-async def start_interview_from_ticket(
-    ticket_code: str = Body(..., embed=True)
+@router.get("", response_model=Response[list])
+async def list_interviews(
+    recruiter_id: UUID = Depends(get_current_user_id)
 ):
     """
-    Start an interview session from a ticket code (public endpoint)
+    List all interviews for the current recruiter across all their jobs
     
     Args:
-        ticket_code: Valid ticket code
+        recruiter_id: Current user ID (for authorization)
     
     Returns:
-        Created and started interview session
+        List of interviews with candidate and report data
     """
     try:
-        interview = await InterviewService.create_interview_from_ticket(ticket_code)
-        interview = await InterviewService.start_interview(UUID(interview["id"]))
-        
+        interviews = await InterviewService.list_interviews_with_reports_for_recruiter(recruiter_id)
         return Response(
             success=True,
-            message="Interview started successfully",
-            data=interview
+            message=f"Found {len(interviews)} interviews",
+            data=interviews
         )
     except Exception as e:
-        logger.error("Error starting interview", error=str(e))
+        logger.error("Error listing interviews", error=str(e))
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
 
@@ -55,63 +53,49 @@ async def update_interview_job_status(
     recruiter_id: UUID = Depends(get_current_user_id)
 ):
     """
-    Update interview job status (accepted/rejected/under_review/pending)
+    Update the job status for an interview (e.g., 'accepted', 'rejected', 'on_hold')
     
     Args:
         interview_id: Interview ID
-        job_status: New job status (accepted, rejected, under_review, pending)
-        recruiter_id: Current recruiter ID
+        job_status: New job status
+        recruiter_id: Current user ID (for authorization)
     
     Returns:
         Updated interview data
     """
     try:
-        from app.database import db
-        
-        # Validate job_status
-        valid_statuses = ['accepted', 'rejected', 'under_review', 'pending']
-        if job_status not in valid_statuses:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid job_status. Must be one of: {', '.join(valid_statuses)}"
-            )
-        
-        # Get interview and verify recruiter owns the job
-        interview_response = db.service_client.table("interviews").select(
-            "id, job_description_id"
-        ).eq("id", str(interview_id)).execute()
-        
-        if not interview_response.data:
-            raise HTTPException(status_code=404, detail="Interview not found")
-        
-        interview = interview_response.data[0]
+        # Verify recruiter owns the job for this interview
+        interview = await InterviewService.get_interview(interview_id)
         job_id = interview.get("job_description_id")
         
-        # Verify recruiter owns the job
-        job_response = db.service_client.table("job_descriptions").select(
-            "id, recruiter_id"
-        ).eq("id", str(job_id)).eq("recruiter_id", str(recruiter_id)).execute()
+        # Check if recruiter owns this job
+        job_response = db.service_client.table("job_descriptions").select("recruiter_id").eq("id", str(job_id)).execute()
+        if not job_response.data or str(job_response.data[0]["recruiter_id"]) != str(recruiter_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to update this interview"
+            )
         
-        if not job_response.data:
-            raise HTTPException(status_code=403, detail="Not authorized to update this interview")
+        # Update interview job_status
+        update_data = InterviewUpdate(job_status=job_status)
+        updated_interview = await InterviewService.update_interview(interview_id, update_data)
         
-        # Update job_status
-        update_response = db.service_client.table("interviews").update({
-            "job_status": job_status
-        }).eq("id", str(interview_id)).execute()
-        
-        if not update_response.data:
-            raise HTTPException(status_code=500, detail="Failed to update interview status")
+        logger.info(
+            "Interview job status updated",
+            interview_id=str(interview_id),
+            job_status=job_status,
+            recruiter_id=str(recruiter_id)
+        )
         
         return Response(
             success=True,
-            message=f"Interview status updated to {job_status}",
-            data=update_response.data[0]
+            message="Interview job status updated successfully",
+            data=updated_interview
         )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Error updating interview job status", error=str(e), interview_id=str(interview_id))
+        logger.error("Error updating interview job status", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update interview status: {str(e)}"
@@ -192,48 +176,147 @@ async def list_interviews_for_job(
     recruiter_id: UUID = Depends(get_current_user_id)
 ):
     """
-    List interviews for a job description
+    List all interviews for a specific job
     
     Args:
         job_description_id: Job description ID
         recruiter_id: Current user ID (for authorization)
     
     Returns:
-        List of interviews
+        List of interviews with candidate and report data
     """
     try:
         interviews = await InterviewService.list_interviews_for_job(job_description_id, recruiter_id)
         return Response(
             success=True,
-            message="Interviews retrieved successfully",
+            message=f"Found {len(interviews)} interviews",
             data=interviews
         )
     except Exception as e:
         logger.error("Error listing interviews", error=str(e))
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
 
 
-@router.get("", response_model=Response[list])
-async def list_interviews_with_reports(
-    recruiter_id: UUID = Depends(get_current_user_id),
+@router.get("/{interview_id}/replay", response_model=Response[dict])
+async def get_interview_replay(
+    interview_id: UUID,
+    recruiter_id: UUID = Depends(get_current_user_id)
 ):
     """
-    List interviews for all jobs owned by the current recruiter, including AI report data.
+    Get interview replay data with ordered questions and responses
+    
+    Returns interview data with:
+    - Interview metadata (candidate, job, date, etc.)
+    - Questions ordered by order_index with audio paths
+    - Responses with transcripts and audio paths
+    
+    Args:
+        interview_id: Interview ID
+        recruiter_id: Current user ID (for authorization)
+    
+    Returns:
+        Interview replay data with ordered Q&A
     """
     try:
-        interviews = await InterviewService.list_interviews_with_reports_for_recruiter(recruiter_id)
+        # Get interview and verify recruiter owns the job
+        interview = await InterviewService.get_interview(interview_id)
+        job_id = interview.get("job_description_id")
+        
+        # Check if recruiter owns this job
+        job_response = db.service_client.table("job_descriptions").select("recruiter_id, title").eq("id", str(job_id)).execute()
+        if not job_response.data or str(job_response.data[0]["recruiter_id"]) != str(recruiter_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to view this interview"
+            )
+        job_title = job_response.data[0].get("title", "")
+        
+        # Get candidate info
+        candidate_response = db.service_client.table("candidates").select("id, full_name, email").eq("id", str(interview["candidate_id"])).execute()
+        candidate = candidate_response.data[0] if candidate_response.data else {}
+        
+        # Get responses first to identify which questions were actually asked
+        responses_response = (
+            db.service_client.table("interview_responses")
+            .select("id, question_id, response_text, response_audio_path, created_at")
+            .eq("interview_id", str(interview_id))
+            .execute()
+        )
+        responses = {r["question_id"]: r for r in (responses_response.data or [])}
+        
+        # Only fetch questions that have responses (were actually asked)
+        question_ids_with_responses = list(responses.keys())
+        if not question_ids_with_responses:
+            # If no responses, return empty list (interview not started)
+            qa_items = []
+        else:
+            # Get only questions that have responses
+            questions_response = (
+                db.service_client.table("interview_questions")
+                .select("id, question_text, order_index, question_type")
+                .eq("interview_id", str(interview_id))
+                .in_("id", question_ids_with_responses)
+                .order("order_index")
+                .execute()
+            )
+            questions = questions_response.data or []
+            
+            # Combine questions with responses (only questions that were asked)
+            qa_items = []
+            for q in questions:
+                q_id = q["id"]
+                response = responses.get(q_id, {})
+            
+            # Get audio URL if audio path exists (use signed URL for private buckets)
+            audio_url = None
+            if response.get("response_audio_path"):
+                from app.services.storage_service import StorageService
+                # Generate signed URL (valid for 1 hour) - works with both public and private buckets
+                audio_url = StorageService.get_audio_signed_url(response["response_audio_path"], expires_in=3600)
+            
+            qa_items.append({
+                "question_id": q_id,
+                "question_text": q.get("question_text", ""),
+                "question_order": q.get("order_index", 0) + 1,  # 1-based for display
+                "question_type": q.get("question_type"),
+                "response_text": response.get("response_text", ""),
+                "response_audio_path": response.get("response_audio_path"),
+                "response_audio_url": audio_url,
+                "response_created_at": response.get("created_at"),
+            })
+        
+        replay_data = {
+            "interview_id": str(interview_id),
+            "interview_status": interview.get("status"),
+            "interview_mode": interview.get("interview_mode", "text"),
+            "started_at": interview.get("started_at"),
+            "completed_at": interview.get("completed_at"),
+            "duration_seconds": interview.get("duration_seconds"),
+            "candidate": {
+                "id": candidate.get("id"),
+                "full_name": candidate.get("full_name", "Unknown"),
+                "email": candidate.get("email", ""),
+            },
+            "job": {
+                "id": str(job_id),
+                "title": job_title,
+            },
+            "questions_and_responses": qa_items,
+        }
+        
         return Response(
             success=True,
-            message="Interviews with reports retrieved successfully",
-            data=interviews,
+            message="Interview replay data retrieved successfully",
+            data=replay_data
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error("Error listing interviews with reports", error=str(e))
+        logger.error("Error fetching interview replay", error=str(e), interview_id=str(interview_id))
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch interview replay: {str(e)}"
         )
-

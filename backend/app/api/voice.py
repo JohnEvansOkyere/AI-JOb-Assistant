@@ -11,6 +11,7 @@ from app.services.interview_ai_service import InterviewAIService
 from app.services.ticket_service import TicketService
 from app.services.interview_report_service import InterviewReportService
 from app.services.storage_service import StorageService
+from app.services.email_service import EmailService
 from app.database import db
 from app.utils.errors import NotFoundError, ForbiddenError
 from app.voice.stt_service import get_stt_provider
@@ -74,6 +75,8 @@ async def voice_interview(
     is_recording_audio = False  # Track if we're currently recording candidate audio
     current_question_id = None  # Track current question for voice mode
     response_audio_paths = {}  # Track audio paths by question_id for voice mode responses
+    candidate_name = None  # Cache candidate name for file naming
+    question_order_map = {}  # Map question_id -> order_index for file naming
 
     try:
         # Validate ticket first
@@ -155,6 +158,15 @@ async def voice_interview(
                         .execute()
                     )
                     cv_text = (cv_response.data or [{}])[0].get("parsed_text", "") or ""
+                    
+                    # Fetch candidate name for file naming
+                    try:
+                        candidate_response = db.service_client.table("candidates").select("full_name").eq("id", str(interview["candidate_id"])).execute()
+                        if candidate_response.data and candidate_response.data[0].get("full_name"):
+                            candidate_name = candidate_response.data[0]["full_name"]
+                    except Exception as e:
+                        logger.warning("Failed to fetch candidate name for file naming", error=str(e))
+                        candidate_name = None
 
                     # Generate initial questions and send the first one (with timeout)
                     try:
@@ -168,16 +180,21 @@ async def voice_interview(
                             timeout=60.0  # 60 second timeout for question generation
                         )
 
-                        # Persisted rows exist in DB already; fetch the first question row to get its ID
-                        first_q_response = (
+                        # Persisted rows exist in DB already; fetch questions with order_index to build mapping
+                        questions_response = (
                             db.service_client.table("interview_questions")
-                            .select("id, question_text")
+                            .select("id, question_text, order_index")
                             .eq("interview_id", str(interview["id"]))
                             .order("order_index")
-                            .limit(1)
                             .execute()
                         )
-                        first_q = (first_q_response.data or [None])[0]
+                        questions_list = questions_response.data or []
+                        
+                        # Build question order map: question_id -> order_index (1-based)
+                        for q in questions_list:
+                            question_order_map[q["id"]] = q.get("order_index", 0) + 1  # order_index is 0-based, we want 1-based
+                        
+                        first_q = questions_list[0] if questions_list else None
 
                         if first_q:
                             questions_asked = 1
@@ -414,13 +431,18 @@ async def voice_interview(
                             elif audio_bytes[4:8] == b'ftyp':
                                 file_extension = "m4a"
                             
-                            # Upload response audio
+                            # Get question order index for file naming
+                            question_order_idx = question_order_map.get(question_id)
+                            
+                            # Upload response audio with improved naming
                             storage_path = await StorageService.upload_response_audio(
                                 UUID(interview["id"]),
                                 UUID(question_id),
                                 audio_bytes,
                                 response_index=1,  # Could track multiple responses per question
-                                file_extension=file_extension
+                                file_extension=file_extension,
+                                candidate_name=candidate_name,
+                                question_order_index=question_order_idx
                             )
                             
                             # Store audio path for later update when response is saved
@@ -612,8 +634,19 @@ async def voice_interview(
                         
                         if followup:
                             questions_asked += 1
-                            current_question_id = followup["id"]
+                            followup_id = followup["id"]
+                            current_question_id = followup_id
                             question_text = followup["question_text"]
+                            
+                            # Update question order map for the new followup question
+                            # Fetch the question's order_index from DB
+                            try:
+                                followup_q_response = db.service_client.table("interview_questions").select("order_index").eq("id", str(followup_id)).execute()
+                                if followup_q_response.data:
+                                    order_idx = followup_q_response.data[0].get("order_index", 0)
+                                    question_order_map[followup_id] = order_idx + 1  # 1-based
+                            except Exception as e:
+                                logger.warning("Failed to fetch order_index for followup question", question_id=str(followup_id), error=str(e))
                             
                             # Send question (text mode) or generate audio (voice mode)
                             if interview_mode == "voice":
@@ -908,8 +941,19 @@ async def voice_interview(
 
                     if followup:
                         questions_asked += 1
-                        current_question_id = followup["id"]
+                        followup_id = followup["id"]
+                        current_question_id = followup_id
                         question_text = followup["question_text"]
+                        
+                        # Update question order map for the new followup question
+                        # Fetch the question's order_index from DB
+                        try:
+                            followup_q_response = db.service_client.table("interview_questions").select("order_index").eq("id", str(followup_id)).execute()
+                            if followup_q_response.data:
+                                order_idx = followup_q_response.data[0].get("order_index", 0)
+                                question_order_map[followup_id] = order_idx + 1  # 1-based
+                        except Exception as e:
+                            logger.warning("Failed to fetch order_index for followup question", question_id=str(followup_id), error=str(e))
                         
                         # Send question (text mode) or generate audio (voice mode)
                         if interview_mode == "voice":
@@ -1055,8 +1099,16 @@ async def voice_interview(
                 )
                 
                 # Mark interview as completed
+                logger.info("Starting interview completion process", interview_id=str(interview["id"]), interview_mode=interview_mode)
                 try:
-                    await InterviewService.complete_interview(UUID(interview["id"]))
+                    # Complete the interview - this updates the status to "completed"
+                    completed_interview = await InterviewService.complete_interview(UUID(interview["id"]))
+                    logger.info(
+                        "Interview marked as completed successfully",
+                        interview_id=str(interview["id"]),
+                        status=completed_interview.get("status"),
+                        completed_at=completed_interview.get("completed_at")
+                    )
                     
                     # Save full interview audio if in voice mode and we have accumulated audio
                     # Note: For full interview audio, we'd need to accumulate all audio chunks
@@ -1066,9 +1118,73 @@ async def voice_interview(
                         # Optionally save a combined audio file if we track it
                         # For now, individual response audio files are saved above
                         logger.info("Interview completed in voice mode", interview_id=str(interview["id"]))
+                    
+                    # Send confirmation email to candidate (non-blocking - don't fail interview if email fails)
+                    try:
+                        # Fetch candidate details
+                        candidate_response = db.service_client.table("candidates").select("email, full_name").eq("id", str(interview["candidate_id"])).execute()
+                        if candidate_response.data and candidate_response.data[0].get("email"):
+                            candidate = candidate_response.data[0]
+                            candidate_email = candidate["email"]
+                            candidate_name = candidate.get("full_name", "Candidate")
+                            
+                            # Fetch job description to get recruiter_id and job title
+                            job_response = db.service_client.table("job_descriptions").select("recruiter_id, title").eq("id", str(interview["job_description_id"])).execute()
+                            if job_response.data:
+                                job = job_response.data[0]
+                                recruiter_id = UUID(job["recruiter_id"])
+                                job_title = job.get("title", "the position")
+                                
+                                # Create email content
+                                subject = f"Thank You - We've Received Your Interview"
+                                body_html = f"""
+                                <p>Dear {candidate_name},</p>
+                                
+                                <p>Thank you for completing your interview for the <strong>{job_title}</strong> position. We have successfully received your interview responses.</p>
+                                
+                                <p>Our team will review your interview and we'll be in touch with you as soon as possible. We appreciate your time and interest in joining our organization.</p>
+                                
+                                <p>If you have any questions in the meantime, please don't hesitate to reach out to us.</p>
+                                
+                                <p>Best regards,<br>The Recruiting Team</p>
+                                """
+                                body_text = f"""
+                                Dear {candidate_name},
+                                
+                                Thank you for completing your interview for the {job_title} position. We have successfully received your interview responses.
+                                
+                                Our team will review your interview and we'll be in touch with you as soon as possible. We appreciate your time and interest in joining our organization.
+                                
+                                If you have any questions in the meantime, please don't hesitate to reach out to us.
+                                
+                                Best regards,
+                                The Recruiting Team
+                                """
+                                
+                                # Send email (non-blocking - don't fail interview if email fails)
+                                await EmailService.send_email(
+                                    recruiter_id=recruiter_id,
+                                    recipient_email=candidate_email,
+                                    recipient_name=candidate_name,
+                                    subject=subject,
+                                    body_html=body_html,
+                                    body_text=body_text,
+                                    candidate_id=UUID(interview["candidate_id"]),
+                                    job_description_id=UUID(interview["job_description_id"]),
+                                )
+                                logger.info("Interview completion confirmation email sent", interview_id=str(interview["id"]), candidate_email=candidate_email)
+                            else:
+                                logger.warning("Job description not found for interview completion email", interview_id=str(interview["id"]), job_id=str(interview["job_description_id"]))
+                        else:
+                            logger.warning("Candidate email not found for interview completion email", interview_id=str(interview["id"]), candidate_id=str(interview["candidate_id"]))
+                    except Exception as email_err:
+                        # Log error but don't fail the interview completion
+                        logger.error("Failed to send interview completion email", error=str(email_err), interview_id=str(interview["id"]), exc_info=True)
                         
                 except Exception as e:
-                    logger.error("Error completing interview", error=str(e))
+                    logger.error("Error completing interview", error=str(e), interview_id=str(interview["id"]), exc_info=True)
+                    # Even if completion fails, we still want to close the connection
+                    # The interview might still be marked as completed if the error occurred after the DB update
                 
                 # Close the connection after a brief delay
                 await websocket.close()

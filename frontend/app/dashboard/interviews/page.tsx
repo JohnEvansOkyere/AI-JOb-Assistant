@@ -12,7 +12,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { apiClient } from '@/lib/api/client'
-import { CheckCircle, XCircle, Mail, Filter, Mic, Type } from 'lucide-react'
+import { CheckCircle, XCircle, Mail, Filter, Mic, Type, Play } from 'lucide-react'
 
 interface InterviewRow {
   id: string
@@ -349,7 +349,16 @@ export default function InterviewsPage() {
                           {getJobStatusBadge(i.job_status)}
                         </td>
                         <td className="py-3 pr-4">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => router.push(`/dashboard/interviews/${i.id}/replay`)}
+                              className="text-blue-700 border-blue-300 hover:bg-blue-50"
+                            >
+                              <Play className="w-3 h-3 mr-1" />
+                              Replay
+                            </Button>
                             <Button
                               variant="outline"
                               size="sm"

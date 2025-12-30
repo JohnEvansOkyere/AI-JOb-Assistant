@@ -104,10 +104,17 @@ app.add_middleware(SecurityHeadersMiddleware)
 # FastAPI CORS doesn't support wildcards, so we use allow_origin_func to handle Vercel preview URLs
 def is_allowed_origin(origin: str) -> bool:
     """Check if origin is allowed, including Vercel preview URLs"""
+    # Handle None or empty origin (same-origin requests)
+    if not origin:
+        logger.debug("CORS: No origin header, rejecting")
+        return False
+    
     allowed = settings.allowed_origins
+    logger.debug("CORS: Checking origin", origin=origin, allowed_origins=allowed)
     
     # Check exact matches
     if origin in allowed:
+        logger.debug("CORS: Origin allowed (exact match)", origin=origin)
         return True
     
     # Check Vercel preview URLs if any Vercel production URL is allowed
@@ -115,8 +122,10 @@ def is_allowed_origin(origin: str) -> bool:
     if has_vercel_prod and 'vercel.app' in origin:
         # Allow any *.vercel.app subdomain if a vercel.app domain is in allowed_origins
         # This covers both production and preview deployments
+        logger.info("CORS: Origin allowed (Vercel preview URL)", origin=origin)
         return True
     
+    logger.warning("CORS: Origin rejected", origin=origin, allowed_origins=allowed)
     return False
 
 # Use allow_origin_func to support dynamic Vercel preview URLs
@@ -124,8 +133,10 @@ app.add_middleware(
     StarletteCORSMiddleware,
     allow_origin_func=is_allowed_origin,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=600,
 )
 
 # Register exception handlers
@@ -230,6 +241,24 @@ async def root():
         "message": "AI Voice Interview Platform API",
         "version": "0.1.0",
         "docs": "/docs" if settings.app_debug else "disabled"
+    }
+
+
+@app.options("/")
+async def root_options(request: Request):
+    """CORS test endpoint - OPTIONS handler"""
+    return {"message": "CORS preflight successful"}
+
+
+@app.get("/cors-test")
+async def cors_test(request: Request):
+    """Test endpoint to verify CORS is working"""
+    origin = request.headers.get("origin")
+    return {
+        "message": "CORS test successful",
+        "origin": origin,
+        "allowed_origins": settings.allowed_origins,
+        "origin_allowed": is_allowed_origin(origin) if origin else False
     }
 
 

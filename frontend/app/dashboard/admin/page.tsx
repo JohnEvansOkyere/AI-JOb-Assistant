@@ -32,6 +32,7 @@ interface Organization {
   org_id: string
   org_name: string
   active_users: number
+  jobs_created: number
   interviews_created: number
   interviews_completed: number
   cvs_screened: number

@@ -39,6 +39,7 @@ export default function CreateTicketPage() {
   const [jobInterviewMode, setJobInterviewMode] = useState<'text' | 'voice' | null>(null)
   const [copiedCode, setCopiedCode] = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
+  const [copiedVoiceLink, setCopiedVoiceLink] = useState(false)
   const [emailSent, setEmailSent] = useState(false)
 
   useEffect(() => {

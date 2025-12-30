@@ -30,6 +30,7 @@ class UserUpdate(BaseModel):
 class User(UserBase):
     """Complete user model"""
     id: UUID
+    is_admin: bool = False
     created_at: datetime
     updated_at: datetime
     

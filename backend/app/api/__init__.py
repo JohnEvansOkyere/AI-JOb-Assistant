@@ -23,6 +23,7 @@ from .email_templates import router as email_templates_router
 from .branding import router as branding_router
 from .calendar import router as calendar_router
 from .interview_stages import router as interview_stages_router
+from .admin import router as admin_router
 
 __all__ = [
     "auth_router",
@@ -45,4 +46,5 @@ __all__ = [
     "branding_router",
     "calendar_router",
     "interview_stages_router",
+    "admin_router",
 ]

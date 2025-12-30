@@ -85,8 +85,8 @@ export function LineChart({ data, height = 200, color = '#0ea5e9' }: LineChartPr
   }).join(' ')
 
   return (
-    <div className="w-full">
-      <svg viewBox={`0 0 100 ${height}`} className="w-full h-auto">
+    <div className="w-full" style={{ height: `${height}px` }}>
+      <svg viewBox={`0 0 100 ${height}`} className="w-full h-full">
         <polyline
           points={points}
           fill="none"

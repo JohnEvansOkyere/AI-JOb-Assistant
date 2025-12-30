@@ -32,6 +32,7 @@ from app.api import (
     branding_router,
     calendar_router,
     interview_stages_router,
+    admin_router,
 )
 from app.utils.errors import (
     app_exception_handler,
@@ -232,6 +233,7 @@ app.include_router(email_templates_router)
 app.include_router(branding_router)
 app.include_router(calendar_router)
 app.include_router(interview_stages_router)
+app.include_router(admin_router)  # Admin dashboard (admin-only)
 
 if __name__ == "__main__":
     import uvicorn

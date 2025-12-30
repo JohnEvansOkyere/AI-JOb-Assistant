@@ -4,7 +4,7 @@ Main application setup and configuration
 """
 
 from fastapi import FastAPI, Request
-from starlette.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
@@ -96,47 +96,18 @@ app = FastAPI(
     redoc_url="/redoc" if settings.app_debug else None,
 )
 
-# Security headers middleware (must be before CORS)
-app.add_middleware(SecurityHeadersMiddleware)
-
-# CORS middleware with Vercel preview URL support
-# FastAPI CORS doesn't support wildcards, so we use allow_origin_func to handle Vercel preview URLs
-def is_allowed_origin(origin: str) -> bool:
-    """Check if origin is allowed, including Vercel preview URLs"""
-    # Handle None or empty origin (same-origin requests)
-    if not origin:
-        logger.debug("CORS: No origin header, rejecting")
-        return False
-    
-    allowed = settings.allowed_origins
-    logger.debug("CORS: Checking origin", origin=origin, allowed_origins=allowed)
-    
-    # Check exact matches
-    if origin in allowed:
-        logger.debug("CORS: Origin allowed (exact match)", origin=origin)
-        return True
-    
-    # Check Vercel preview URLs if any Vercel production URL is allowed
-    has_vercel_prod = any('vercel.app' in o for o in allowed)
-    if has_vercel_prod and 'vercel.app' in origin:
-        # Allow any *.vercel.app subdomain if a vercel.app domain is in allowed_origins
-        # This covers both production and preview deployments
-        logger.info("CORS: Origin allowed (Vercel preview URL)", origin=origin)
-        return True
-    
-    logger.warning("CORS: Origin rejected", origin=origin, allowed_origins=allowed)
-    return False
-
-# Use allow_origin_func to support dynamic Vercel preview URLs
+# CORS middleware - simple approach
+# Use standard CORSMiddleware with origins from settings
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_func=is_allowed_origin,
+    allow_origins=settings.allowed_origins if settings.allowed_origins else ["*"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
-    max_age=600,
 )
+
+# Security headers middleware (adds CORS for Vercel preview URLs)
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Register exception handlers
 app.add_exception_handler(AppException, app_exception_handler)
@@ -243,12 +214,6 @@ async def root():
     }
 
 
-@app.options("/")
-async def root_options(request: Request):
-    """CORS test endpoint - OPTIONS handler"""
-    return {"message": "CORS preflight successful"}
-
-
 @app.get("/cors-test")
 async def cors_test(request: Request):
     """Test endpoint to verify CORS is working"""
@@ -257,7 +222,7 @@ async def cors_test(request: Request):
         "message": "CORS test successful",
         "origin": origin,
         "allowed_origins": settings.allowed_origins,
-        "origin_allowed": is_allowed_origin(origin) if origin else False
+        "is_vercel": "vercel.app" in origin if origin else False
     }
 
 

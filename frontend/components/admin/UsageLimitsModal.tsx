@@ -122,7 +122,15 @@ export function UsageLimitsModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" 
+      onClick={(e) => {
+        // Only close if clicking the backdrop, not the modal content
+        if (e.target === e.currentTarget) {
+          onClose()
+        }
+      }}
+    >
       <Card className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
@@ -147,12 +155,19 @@ export function UsageLimitsModal({
                 <label className="block text-sm font-medium text-gray-700">
                   Monthly Interview Limit
                 </label>
-                <label className="flex items-center gap-2 text-sm text-gray-600">
+                <label 
+                  className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <input
                     type="checkbox"
                     checked={unlimited.monthly_interview}
-                    onChange={(e) => setUnlimited({ ...unlimited, monthly_interview: e.target.checked })}
-                    className="rounded"
+                    onChange={(e) => {
+                      e.stopPropagation()
+                      setUnlimited({ ...unlimited, monthly_interview: e.target.checked })
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="rounded cursor-pointer"
                   />
                   Unlimited
                 </label>
@@ -174,12 +189,19 @@ export function UsageLimitsModal({
                 <label className="block text-sm font-medium text-gray-700">
                   Monthly Cost Limit (USD)
                 </label>
-                <label className="flex items-center gap-2 text-sm text-gray-600">
+                <label 
+                  className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <input
                     type="checkbox"
                     checked={unlimited.monthly_cost}
-                    onChange={(e) => setUnlimited({ ...unlimited, monthly_cost: e.target.checked })}
-                    className="rounded"
+                    onChange={(e) => {
+                      e.stopPropagation()
+                      setUnlimited({ ...unlimited, monthly_cost: e.target.checked })
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="rounded cursor-pointer"
                   />
                   Unlimited
                 </label>
@@ -202,12 +224,19 @@ export function UsageLimitsModal({
                 <label className="block text-sm font-medium text-gray-700">
                   Daily Cost Limit (USD)
                 </label>
-                <label className="flex items-center gap-2 text-sm text-gray-600">
+                <label 
+                  className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <input
                     type="checkbox"
                     checked={unlimited.daily_cost}
-                    onChange={(e) => setUnlimited({ ...unlimited, daily_cost: e.target.checked })}
-                    className="rounded"
+                    onChange={(e) => {
+                      e.stopPropagation()
+                      setUnlimited({ ...unlimited, daily_cost: e.target.checked })
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="rounded cursor-pointer"
                   />
                   Unlimited
                 </label>

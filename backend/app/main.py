@@ -103,7 +103,7 @@ app.add_middleware(
     allow_origins=settings.allowed_origins if settings.allowed_origins else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
 )
 
 # Security headers middleware (adds CORS for Vercel preview URLs)

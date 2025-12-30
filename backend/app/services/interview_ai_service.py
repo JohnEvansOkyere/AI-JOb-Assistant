@@ -8,6 +8,7 @@ from uuid import UUID
 from app.ai.question_generator import QuestionGenerator
 from app.ai.response_analyzer import ResponseAnalyzer
 from app.ai.token_tracker import TokenTracker
+from app.services.ai_usage_context import get_interview_context
 from app.database import db
 from app.models.interview_question import InterviewQuestionCreate
 from app.models.interview_response import InterviewResponseCreate
@@ -50,12 +51,19 @@ class InterviewAIService:
             List of question dictionaries
         """
         try:
+            # Get context for logging
+            context = await get_interview_context(interview_id)
+            
             questions = []
             
             # Generate warmup question
             warmup_question = await self.question_generator.generate_warmup_question(
                 job_description,
-                cv_text
+                cv_text,
+                recruiter_id=context.get("recruiter_id"),
+                interview_id=interview_id,
+                job_description_id=context.get("job_description_id"),
+                candidate_id=context.get("candidate_id")
             )
             questions.append({
                 "question_text": warmup_question,
@@ -72,7 +80,11 @@ class InterviewAIService:
                 skill_question = await self.question_generator.generate_skill_question(
                     job_description,
                     cv_text,
-                    skill
+                    skill,
+                    recruiter_id=context.get("recruiter_id"),
+                    interview_id=interview_id,
+                    job_description_id=context.get("job_description_id"),
+                    candidate_id=context.get("candidate_id")
                 )
                 questions.append({
                     "question_text": skill_question,
@@ -84,7 +96,11 @@ class InterviewAIService:
             # Generate experience question
             experience_question = await self.question_generator.generate_experience_question(
                 job_description,
-                cv_text
+                cv_text,
+                recruiter_id=context.get("recruiter_id"),
+                interview_id=interview_id,
+                job_description_id=context.get("job_description_id"),
+                candidate_id=context.get("candidate_id")
             )
             questions.append({
                 "question_text": experience_question,
@@ -140,12 +156,19 @@ class InterviewAIService:
             
             question = question_response.data[0]
             
+            # Get context for logging
+            context = await get_interview_context(interview_id)
+            
             # Analyze response
             analysis = await self.response_analyzer.analyze_response(
                 question["question_text"],
                 response_text,
                 job_description,
-                cv_text
+                cv_text,
+                recruiter_id=context.get("recruiter_id"),
+                interview_id=interview_id,
+                job_description_id=context.get("job_description_id"),
+                candidate_id=context.get("candidate_id")
             )
             
             # Store response
@@ -189,6 +212,9 @@ class InterviewAIService:
             Question dictionary
         """
         try:
+            # Get context for logging
+            context = await get_interview_context(interview_id)
+            
             # Get previous question
             prev_question = db.service_client.table("interview_questions").select("*").eq("id", str(previous_question_id)).execute()
             if not prev_question.data:
@@ -207,6 +233,10 @@ class InterviewAIService:
             # Get all previous questions
             all_questions = db.service_client.table("interview_questions").select("question_text").eq("interview_id", str(interview_id)).execute()
             previous_questions = [q["question_text"] for q in (all_questions.data or [])]
+            
+            # Note: The "with_acknowledgment" methods don't have context params yet
+            # They'll use regular provider for now (backwards compatible)
+            # TODO: Add context params to these methods
             
             # Generate adaptive question with acknowledgment
             if response_quality == "weak" and skill_category:

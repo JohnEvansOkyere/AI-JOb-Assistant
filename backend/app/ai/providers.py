@@ -48,6 +48,7 @@ class OpenAIProvider(AIProvider):
     def __init__(self):
         if not settings.openai_api_key:
             raise ValueError("OpenAI API key not configured")
+        self._last_usage = None  # Store last API usage info
         try:
             from openai import OpenAI
             import httpx
@@ -123,6 +124,14 @@ class OpenAIProvider(AIProvider):
                 temperature=temperature
             )
             
+            # Store usage info for logging
+            if hasattr(response, 'usage') and response.usage:
+                self._last_usage = {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens
+                }
+            
             return response.choices[0].message.content
         except Exception as e:
             logger.error("OpenAI API error", error=str(e))
@@ -168,6 +177,7 @@ class GroqProvider(AIProvider):
     def __init__(self):
         if not settings.groq_api_key:
             raise ValueError("Groq API key not configured")
+        self._last_usage = None  # Store last API usage info
         try:
             from groq import Groq
             import httpx
@@ -238,6 +248,14 @@ class GroqProvider(AIProvider):
                 temperature=temperature
             )
             
+            # Store usage info for logging
+            if hasattr(response, 'usage') and response.usage:
+                self._last_usage = {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens
+                }
+            
             return response.choices[0].message.content
         except Exception as e:
             logger.error("Groq API error", error=str(e))
@@ -283,6 +301,7 @@ class GeminiProvider(AIProvider):
     def __init__(self):
         if not settings.gemini_api_key:
             raise ValueError("Gemini API key not configured")
+        self._last_usage = None  # Store last API usage info (Gemini doesn't expose usage directly)
         try:
             import google.generativeai as genai
             genai.configure(api_key=settings.gemini_api_key)
@@ -390,6 +409,7 @@ class GrokProvider(AIProvider):
     def __init__(self):
         if not settings.grok_api_key:
             raise ValueError("Grok API key not configured")
+        self._last_usage = None  # Store last API usage info
         try:
             from openai import OpenAI
             import httpx
@@ -450,6 +470,14 @@ class GrokProvider(AIProvider):
                 max_tokens=max_tokens,
                 temperature=temperature
             )
+            
+            # Store usage info for logging
+            if hasattr(response, 'usage') and response.usage:
+                self._last_usage = {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens
+                }
             
             return response.choices[0].message.content
         except Exception as e:

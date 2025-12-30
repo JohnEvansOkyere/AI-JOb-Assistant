@@ -4,8 +4,11 @@ Analyzes candidate responses to interview questions
 """
 
 from typing import Dict, Any, Optional
+from uuid import UUID
 from app.ai.providers import AIProviderFactory
+from app.ai.providers_wrapper import LoggedAIProvider
 from app.ai.prompts import InterviewPrompts
+from app.config import settings
 import structlog
 
 logger = structlog.get_logger()
@@ -22,14 +25,41 @@ class ResponseAnalyzer:
             provider_name: AI provider to use
         """
         self.provider = AIProviderFactory.create_provider(provider_name)
+        self.provider_name = provider_name or settings.primary_ai_provider
         self.prompts = InterviewPrompts()
+    
+    def _get_provider_for_call(
+        self,
+        recruiter_id: Optional[UUID] = None,
+        interview_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None,
+        feature_name: str = "response_analysis"
+    ):
+        """Get provider (logged or regular) based on context"""
+        if recruiter_id or interview_id:
+            # Use logged provider with context
+            return LoggedAIProvider(self.provider, self.provider_name), {
+                "recruiter_id": recruiter_id,
+                "interview_id": interview_id,
+                "job_description_id": job_description_id,
+                "candidate_id": candidate_id,
+                "feature_name": feature_name
+            }
+        else:
+            # Use regular provider (backwards compatible)
+            return self.provider, {}
     
     async def analyze_response(
         self,
         question: str,
         response: str,
         job_description: Dict[str, Any],
-        cv_text: str
+        cv_text: str,
+        recruiter_id: Optional[UUID] = None,
+        interview_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None
     ) -> Dict[str, Any]:
         """
         Analyze a candidate's response
@@ -39,6 +69,10 @@ class ResponseAnalyzer:
             response: Candidate's response
             job_description: Job description data
             cv_text: Candidate CV text
+            recruiter_id: Optional recruiter ID for logging
+            interview_id: Optional interview ID for logging
+            job_description_id: Optional job description ID for logging
+            candidate_id: Optional candidate ID for logging
         
         Returns:
             Analysis dictionary with:
@@ -58,12 +92,29 @@ class ResponseAnalyzer:
                 cv_text
             )
             
-            analysis_text = await self.provider.generate_completion(
-                prompt=prompt,
-                system_prompt=self.prompts.SYSTEM_PROMPT,
-                max_tokens=500,
-                temperature=0.5
+            provider, context = self._get_provider_for_call(
+                recruiter_id=recruiter_id,
+                interview_id=interview_id,
+                job_description_id=job_description_id,
+                candidate_id=candidate_id,
+                feature_name="response_analysis"
             )
+            
+            if isinstance(provider, LoggedAIProvider):
+                analysis_text = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt=self.prompts.SYSTEM_PROMPT,
+                    max_tokens=500,
+                    temperature=0.5,
+                    **context
+                )
+            else:
+                analysis_text = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt=self.prompts.SYSTEM_PROMPT,
+                    max_tokens=500,
+                    temperature=0.5
+                )
             
             # Parse analysis (basic implementation - can be enhanced)
             return self._parse_analysis(analysis_text, response)

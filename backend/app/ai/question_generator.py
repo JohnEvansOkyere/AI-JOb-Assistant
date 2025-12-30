@@ -4,7 +4,9 @@ Generates interview questions based on job description and CV
 """
 
 from typing import List, Dict, Any, Optional
+from uuid import UUID
 from app.ai.providers import AIProviderFactory
+from app.ai.providers_wrapper import LoggedAIProvider
 from app.ai.prompts import InterviewPrompts
 from app.config import settings
 import structlog
@@ -23,12 +25,39 @@ class QuestionGenerator:
             provider_name: AI provider to use (defaults to primary_ai_provider)
         """
         self.provider = AIProviderFactory.create_provider(provider_name)
+        self.provider_name = provider_name or settings.primary_ai_provider
         self.prompts = InterviewPrompts()
+    
+    def _get_provider_for_call(
+        self,
+        recruiter_id: Optional[UUID] = None,
+        interview_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None,
+        feature_name: str = "question_generation"
+    ):
+        """Get provider (logged or regular) based on context"""
+        if recruiter_id or interview_id:
+            # Use logged provider with context
+            return LoggedAIProvider(self.provider, self.provider_name), {
+                "recruiter_id": recruiter_id,
+                "interview_id": interview_id,
+                "job_description_id": job_description_id,
+                "candidate_id": candidate_id,
+                "feature_name": feature_name
+            }
+        else:
+            # Use regular provider (backwards compatible)
+            return self.provider, {}
     
     async def generate_warmup_question(
         self,
         job_description: Dict[str, Any],
-        cv_text: str
+        cv_text: str,
+        recruiter_id: Optional[UUID] = None,
+        interview_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None
     ) -> str:
         """
         Generate warmup question
@@ -36,18 +65,39 @@ class QuestionGenerator:
         Args:
             job_description: Job description data
             cv_text: Candidate CV text
+            recruiter_id: Optional recruiter ID for logging
+            interview_id: Optional interview ID for logging
+            job_description_id: Optional job description ID for logging
+            candidate_id: Optional candidate ID for logging
         
         Returns:
             Generated question text
         """
         try:
             prompt = self.prompts.get_warmup_prompt(job_description, cv_text)
-            question = await self.provider.generate_completion(
-                prompt=prompt,
-                system_prompt=self.prompts.SYSTEM_PROMPT,
-                max_tokens=200,
-                temperature=0.8
+            provider, context = self._get_provider_for_call(
+                recruiter_id=recruiter_id,
+                interview_id=interview_id,
+                job_description_id=job_description_id,
+                candidate_id=candidate_id,
+                feature_name="question_generation"
             )
+            
+            if isinstance(provider, LoggedAIProvider):
+                question = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt=self.prompts.SYSTEM_PROMPT,
+                    max_tokens=200,
+                    temperature=0.8,
+                    **context
+                )
+            else:
+                question = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt=self.prompts.SYSTEM_PROMPT,
+                    max_tokens=200,
+                    temperature=0.8
+                )
             return question.strip()
         except Exception as e:
             logger.error("Error generating warmup question", error=str(e))
@@ -59,7 +109,11 @@ class QuestionGenerator:
         job_description: Dict[str, Any],
         cv_text: str,
         skill_category: str,
-        previous_questions: Optional[List[str]] = None
+        previous_questions: Optional[List[str]] = None,
+        recruiter_id: Optional[UUID] = None,
+        interview_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None
     ) -> str:
         """
         Generate skill assessment question
@@ -69,6 +123,10 @@ class QuestionGenerator:
             cv_text: Candidate CV text
             skill_category: Skill/requirement to test
             previous_questions: List of previously asked questions
+            recruiter_id: Optional recruiter ID for logging
+            interview_id: Optional interview ID for logging
+            job_description_id: Optional job description ID for logging
+            candidate_id: Optional candidate ID for logging
         
         Returns:
             Generated question text
@@ -80,12 +138,29 @@ class QuestionGenerator:
                 skill_category,
                 previous_questions or []
             )
-            question = await self.provider.generate_completion(
-                prompt=prompt,
-                system_prompt=self.prompts.SYSTEM_PROMPT,
-                max_tokens=300,
-                temperature=0.7
+            provider, context = self._get_provider_for_call(
+                recruiter_id=recruiter_id,
+                interview_id=interview_id,
+                job_description_id=job_description_id,
+                candidate_id=candidate_id,
+                feature_name="question_generation"
             )
+            
+            if isinstance(provider, LoggedAIProvider):
+                question = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt=self.prompts.SYSTEM_PROMPT,
+                    max_tokens=300,
+                    temperature=0.7,
+                    **context
+                )
+            else:
+                question = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt=self.prompts.SYSTEM_PROMPT,
+                    max_tokens=300,
+                    temperature=0.7
+                )
             return question.strip()
         except Exception as e:
             logger.error("Error generating skill question", error=str(e), skill=skill_category)
@@ -96,7 +171,11 @@ class QuestionGenerator:
         self,
         job_description: Dict[str, Any],
         cv_text: str,
-        previous_questions: Optional[List[str]] = None
+        previous_questions: Optional[List[str]] = None,
+        recruiter_id: Optional[UUID] = None,
+        interview_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None
     ) -> str:
         """
         Generate experience validation question
@@ -105,6 +184,10 @@ class QuestionGenerator:
             job_description: Job description data
             cv_text: Candidate CV text
             previous_questions: List of previously asked questions
+            recruiter_id: Optional recruiter ID for logging
+            interview_id: Optional interview ID for logging
+            job_description_id: Optional job description ID for logging
+            candidate_id: Optional candidate ID for logging
         
         Returns:
             Generated question text
@@ -115,12 +198,29 @@ class QuestionGenerator:
                 cv_text,
                 previous_questions or []
             )
-            question = await self.provider.generate_completion(
-                prompt=prompt,
-                system_prompt=self.prompts.SYSTEM_PROMPT,
-                max_tokens=300,
-                temperature=0.7
+            provider, context = self._get_provider_for_call(
+                recruiter_id=recruiter_id,
+                interview_id=interview_id,
+                job_description_id=job_description_id,
+                candidate_id=candidate_id,
+                feature_name="question_generation"
             )
+            
+            if isinstance(provider, LoggedAIProvider):
+                question = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt=self.prompts.SYSTEM_PROMPT,
+                    max_tokens=300,
+                    temperature=0.7,
+                    **context
+                )
+            else:
+                question = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt=self.prompts.SYSTEM_PROMPT,
+                    max_tokens=300,
+                    temperature=0.7
+                )
             return question.strip()
         except Exception as e:
             logger.error("Error generating experience question", error=str(e))

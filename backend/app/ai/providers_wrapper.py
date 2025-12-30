@@ -57,11 +57,17 @@ class LoggedAIProvider:
                 temperature=temperature
             )
             
-            # Estimate tokens (rough estimate)
-            full_prompt = (system_prompt or "") + "\n\n" + prompt
-            prompt_tokens = self.provider.get_token_count(full_prompt)
-            completion_tokens = self.provider.get_token_count(result) if result else 0
-            total_tokens = prompt_tokens + completion_tokens
+            # Try to get actual usage from provider (if available)
+            if hasattr(self.provider, '_last_usage') and self.provider._last_usage:
+                prompt_tokens = self.provider._last_usage.get("prompt_tokens")
+                completion_tokens = self.provider._last_usage.get("completion_tokens")
+                total_tokens = self.provider._last_usage.get("total_tokens")
+            else:
+                # Fallback to estimation if provider doesn't expose usage
+                full_prompt = (system_prompt or "") + "\n\n" + prompt
+                prompt_tokens = self.provider.get_token_count(full_prompt)
+                completion_tokens = self.provider.get_token_count(result) if result else 0
+                total_tokens = prompt_tokens + completion_tokens
             
         except Exception as e:
             status = "error"

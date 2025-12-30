@@ -3,8 +3,12 @@ Text-to-Speech Service
 Implements TTS using ElevenLabs API
 """
 
-from typing import Protocol
+import time
+from typing import Protocol, Optional
+from uuid import UUID
 from app.config import settings
+from app.services.ai_usage_logger import AIUsageLogger
+from app.services.cost_calculator import CostCalculator
 import structlog
 
 logger = structlog.get_logger()
@@ -12,12 +16,23 @@ logger = structlog.get_logger()
 
 class TTSProvider(Protocol):
     """Protocol for Text-to-Speech providers"""
-    async def synthesize(self, text: str) -> bytes:
+    async def synthesize(
+        self,
+        text: str,
+        recruiter_id: Optional[UUID] = None,
+        interview_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None
+    ) -> bytes:
         """
         Convert text to speech audio
         
         Args:
             text: Text to synthesize
+            recruiter_id: Optional recruiter ID for logging
+            interview_id: Optional interview ID for logging
+            job_description_id: Optional job description ID for logging
+            candidate_id: Optional candidate ID for logging
         
         Returns:
             Audio bytes (MP3 format)
@@ -62,6 +77,10 @@ class ElevenLabsTTS:
         
         Args:
             text: Text to synthesize to speech
+            recruiter_id: Optional recruiter ID for logging
+            interview_id: Optional interview ID for logging
+            job_description_id: Optional job description ID for logging
+            candidate_id: Optional candidate ID for logging
         
         Returns:
             Audio bytes (MP3 format)
@@ -69,6 +88,12 @@ class ElevenLabsTTS:
         Raises:
             ValueError: If text is empty or API call fails
         """
+        start_time = time.time()
+        status = "success"
+        error_message = None
+        audio_bytes = None
+        characters_used = 0
+        
         try:
             # Validate input
             if not text or len(text.strip()) == 0:
@@ -76,17 +101,20 @@ class ElevenLabsTTS:
             
             # Limit text length (ElevenLabs has limits based on plan)
             max_chars = 5000  # Conservative limit (most plans support more)
-            if len(text) > max_chars:
+            original_length = len(text)
+            if original_length > max_chars:
                 logger.warning(
                     "Text exceeds recommended length, truncating",
-                    original_length=len(text),
+                    original_length=original_length,
                     max_length=max_chars
                 )
                 text = text[:max_chars]
             
+            characters_used = len(text)  # Use actual characters sent
+            
             logger.info(
                 "Calling ElevenLabs API for TTS",
-                text_length=len(text),
+                text_length=characters_used,
                 voice_id=self.voice_id
             )
             
@@ -127,20 +155,46 @@ class ElevenLabsTTS:
             
             logger.info(
                 "ElevenLabs TTS synthesis successful",
-                text_length=len(text),
+                text_length=characters_used,
                 audio_size=len(audio_bytes)
             )
             
             return audio_bytes
             
         except Exception as e:
+            status = "error"
+            error_message = str(e)
             logger.error(
                 "ElevenLabs TTS synthesis failed",
-                error=str(e),
+                error=error_message,
                 error_type=type(e).__name__,
-                text_length=len(text) if text else 0
+                text_length=characters_used
             )
             raise ValueError(f"Failed to synthesize speech: {str(e)}")
+        finally:
+            # Log usage (fire and forget - don't block on logging)
+            if recruiter_id or interview_id:
+                try:
+                    latency_ms = int((time.time() - start_time) * 1000)
+                    estimated_cost = float(CostCalculator.calculate_elevenlabs_cost(characters_used))
+                    
+                    await AIUsageLogger.log_usage(
+                        provider_name="elevenlabs",
+                        feature_name="tts_synthesis",
+                        recruiter_id=recruiter_id,
+                        interview_id=interview_id,
+                        job_description_id=job_description_id,
+                        candidate_id=candidate_id,
+                        model_name="eleven_multilingual_v2",
+                        characters_used=characters_used,
+                        estimated_cost_usd=estimated_cost,
+                        latency_ms=latency_ms,
+                        status=status,
+                        error_message=error_message,
+                    )
+                except Exception as log_error:
+                    # Don't fail the main operation if logging fails
+                    logger.warning("Failed to log TTS usage", error=str(log_error))
 
 
 def get_tts_provider() -> TTSProvider:

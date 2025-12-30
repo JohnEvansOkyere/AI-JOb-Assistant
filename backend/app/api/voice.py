@@ -211,7 +211,18 @@ async def voice_interview(
                                     
                                     # Generate audio
                                     logger.info("Starting TTS synthesis", question_id=first_q["id"], text_length=len(question_text))
-                                    audio_bytes = await tts.synthesize(question_text)
+                                    # Get context for logging
+                                    interview_id_val = UUID(interview["id"]) if interview else None
+                                    job_desc_id = UUID(job_description["id"]) if job_description else None
+                                    candidate_id_val = UUID(interview["candidate_id"]) if interview and interview.get("candidate_id") else None
+                                    recruiter_id_val = UUID(job_description["recruiter_id"]) if job_description and job_description.get("recruiter_id") else None
+                                    audio_bytes = await tts.synthesize(
+                                        question_text,
+                                        recruiter_id=recruiter_id_val,
+                                        interview_id=interview_id_val,
+                                        job_description_id=job_desc_id,
+                                        candidate_id=candidate_id_val
+                                    )
                                     
                                     # Validate audio bytes
                                     if not audio_bytes:
@@ -395,7 +406,19 @@ async def voice_interview(
                 # Transcribe audio using STT
                 try:
                     logger.info("Transcribing audio", audio_size=len(audio_bytes))
-                    answer_text = await stt.transcribe_chunk(audio_bytes, language="en")
+                    # Get context for logging
+                    interview_id_val = UUID(interview["id"]) if interview else None
+                    job_desc_id = UUID(job_description["id"]) if job_description else None
+                    candidate_id_val = UUID(interview["candidate_id"]) if interview and interview.get("candidate_id") else None
+                    recruiter_id_val = UUID(job_description["recruiter_id"]) if job_description and job_description.get("recruiter_id") else None
+                    answer_text = await stt.transcribe_chunk(
+                        audio_bytes,
+                        language="en",
+                        recruiter_id=recruiter_id_val,
+                        interview_id=interview_id_val,
+                        job_description_id=job_desc_id,
+                        candidate_id=candidate_id_val
+                    )
                     
                     if not answer_text or len(answer_text.strip()) == 0:
                         await websocket.send_text(
@@ -658,7 +681,18 @@ async def voice_interview(
                                     
                                     # Generate audio
                                     logger.info("Starting TTS synthesis for followup", question_id=followup["id"], text_length=len(question_text))
-                                    audio_bytes = await tts.synthesize(question_text)
+                                    # Get context for logging
+                                    interview_id_val = UUID(interview["id"]) if interview else None
+                                    job_desc_id = UUID(job_description["id"]) if job_description else None
+                                    candidate_id_val = UUID(interview["candidate_id"]) if interview and interview.get("candidate_id") else None
+                                    recruiter_id_val = UUID(job_description["recruiter_id"]) if job_description and job_description.get("recruiter_id") else None
+                                    audio_bytes = await tts.synthesize(
+                                        question_text,
+                                        recruiter_id=recruiter_id_val,
+                                        interview_id=interview_id_val,
+                                        job_description_id=job_desc_id,
+                                        candidate_id=candidate_id_val
+                                    )
                                     
                                     # Validate audio bytes
                                     if not audio_bytes:

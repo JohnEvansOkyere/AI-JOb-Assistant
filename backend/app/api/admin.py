@@ -3,11 +3,13 @@ Admin API Routes
 Internal admin dashboard endpoints (admin-only access)
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from datetime import datetime, timedelta
+from typing import Optional, Dict, Any
 from app.schemas.common import Response
 from app.utils.admin_auth import get_current_admin, require_admin
 from app.services.admin_service import AdminService
+from app.services import admin_service_extensions
 import structlog
 
 logger = structlog.get_logger()
@@ -19,8 +21,11 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 async def list_organizations(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    sort_by: str = Query("last_activity", regex="^(org_name|last_activity|monthly_ai_cost_usd|interviews_completed)$"),
+    sort_by: str = Query("last_activity", regex="^(org_name|last_activity|monthly_ai_cost_usd|interviews_completed|active_users)$"),
     sort_order: str = Query("desc", regex="^(asc|desc)$"),
+    search: str = Query(None),  # Search by organization name
+    status: str = Query(None, regex="^(active|paused|suspended|trial)$"),  # Filter by status
+    subscription_plan: str = Query(None, regex="^(free|starter|professional|enterprise|custom)$"),  # Filter by plan
     admin_user: dict = Depends(get_current_admin)
 ):
     """
@@ -31,6 +36,9 @@ async def list_organizations(
         offset: Offset for pagination
         sort_by: Field to sort by
         sort_order: Sort order (asc/desc)
+        search: Search organizations by name (case-insensitive partial match)
+        status: Filter by organization status
+        subscription_plan: Filter by subscription plan
         admin_user: Current admin user (for authorization)
     
     Returns:
@@ -41,7 +49,10 @@ async def list_organizations(
             limit=limit,
             offset=offset,
             sort_by=sort_by,
-            sort_order=sort_order
+            sort_order=sort_order,
+            search=search,
+            status=status,
+            subscription_plan=subscription_plan
         )
         
         return Response(
@@ -194,5 +205,179 @@ async def get_system_health(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch system health: {str(e)}"
+        )
+
+
+# ============================================================================
+# Organization Management Endpoints
+# ============================================================================
+
+@router.put("/organizations/{org_name}/status", response_model=Response[dict])
+async def update_organization_status(
+    org_name: str,
+    status: str = Body(..., embed=True, regex="^(active|paused|suspended|trial)$"),
+    admin_user: dict = Depends(get_current_admin)
+):
+    """Update organization status (pause/resume/suspend)"""
+    try:
+        result = await admin_service_extensions.update_organization_status(
+            org_name=org_name,
+            status=status,
+            admin_user_id=admin_user["id"]
+        )
+        
+        if "error" in result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=result["error"]
+            )
+        
+        return Response(
+            success=True,
+            message=f"Organization status updated to {status}",
+            data=result
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error updating organization status", error=str(e), org_name=org_name)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update organization status: {str(e)}"
+        )
+
+
+@router.put("/organizations/{org_name}/subscription-plan", response_model=Response[dict])
+async def update_subscription_plan(
+    org_name: str,
+    subscription_plan: str = Body(..., embed=True, regex="^(free|starter|professional|enterprise|custom)$"),
+    admin_user: dict = Depends(get_current_admin)
+):
+    """Update organization subscription plan"""
+    try:
+        result = await admin_service_extensions.update_subscription_plan(
+            org_name=org_name,
+            subscription_plan=subscription_plan,
+            admin_user_id=admin_user["id"]
+        )
+        
+        if "error" in result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=result["error"]
+            )
+        
+        return Response(
+            success=True,
+            message=f"Subscription plan updated to {subscription_plan}",
+            data=result
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error updating subscription plan", error=str(e), org_name=org_name)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update subscription plan: {str(e)}"
+        )
+
+
+@router.put("/organizations/{org_name}/usage-limits", response_model=Response[dict])
+async def update_usage_limits(
+    org_name: str,
+    limits: Dict[str, Any] = Body(...),
+    admin_user: dict = Depends(get_current_admin)
+):
+    """Update organization usage limits"""
+    try:
+        result = await admin_service_extensions.update_usage_limits(
+            org_name=org_name,
+            limits=limits,
+            admin_user_id=admin_user["id"]
+        )
+        
+        if "error" in result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=result["error"]
+            )
+        
+        return Response(
+            success=True,
+            message="Usage limits updated successfully",
+            data=result
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error updating usage limits", error=str(e), org_name=org_name)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update usage limits: {str(e)}"
+        )
+
+
+@router.put("/organizations/{org_name}/admin-notes", response_model=Response[dict])
+async def update_admin_notes(
+    org_name: str,
+    admin_notes: str = Body(..., embed=True),
+    admin_user: dict = Depends(get_current_admin)
+):
+    """Update admin notes for an organization"""
+    try:
+        result = await admin_service_extensions.update_admin_notes(
+            org_name=org_name,
+            admin_notes=admin_notes,
+            admin_user_id=admin_user["id"]
+        )
+        
+        if "error" in result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=result["error"]
+            )
+        
+        return Response(
+            success=True,
+            message="Admin notes updated successfully",
+            data=result
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error updating admin notes", error=str(e), org_name=org_name)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update admin notes: {str(e)}"
+        )
+
+
+@router.get("/admin-logs", response_model=Response[list])
+async def get_admin_logs(
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    target_type: Optional[str] = Query(None, regex="^(organization|user|system)$"),
+    action_type: Optional[str] = Query(None),
+    admin_user: dict = Depends(get_current_admin)
+):
+    """Get admin action logs (audit trail)"""
+    try:
+        logs = await admin_service_extensions.get_admin_logs(
+            limit=limit,
+            offset=offset,
+            target_type=target_type,
+            action_type=action_type
+        )
+        
+        return Response(
+            success=True,
+            message=f"Found {len(logs)} admin logs",
+            data=logs
+        )
+    except Exception as e:
+        logger.error("Error fetching admin logs", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch admin logs: {str(e)}"
         )
 

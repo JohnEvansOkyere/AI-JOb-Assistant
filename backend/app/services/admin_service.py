@@ -20,7 +20,10 @@ class AdminService:
         limit: int = 100,
         offset: int = 0,
         sort_by: str = "last_activity",
-        sort_order: str = "desc"
+        sort_order: str = "desc",
+        search: Optional[str] = None,
+        status: Optional[str] = None,
+        subscription_plan: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Get overview of all organizations (grouped by company_name)
@@ -30,6 +33,9 @@ class AdminService:
             offset: Offset for pagination
             sort_by: Field to sort by (company_name, last_activity, interviews_count, etc.)
             sort_order: Sort order (asc, desc)
+            search: Search organizations by name (case-insensitive partial match)
+            status: Filter by organization status
+            subscription_plan: Filter by subscription plan
             
         Returns:
             List of organization summaries
@@ -284,6 +290,15 @@ class AdminService:
             completed_interviews = len([i for i in interviews if i.get("status") == "completed"])
             completion_rate = (completed_interviews / total_interviews * 100) if total_interviews > 0 else 0
             
+            # Get organization settings
+            settings_response = (
+                db.service_client.table("organization_settings")
+                .select("*")
+                .eq("company_name", org_name)
+                .execute()
+            )
+            settings = settings_response.data[0] if settings_response.data else {}
+            
             return {
                 "org_name": org_name,
                 "active_users": len(users),
@@ -309,6 +324,15 @@ class AdminService:
                     "total_requests": total_requests,
                     "failed_requests": failed_requests,
                     "error_rate_percent": round(error_rate, 2),
+                },
+                "settings": {
+                    "subscription_plan": settings.get("subscription_plan", "free"),
+                    "status": settings.get("status", "active"),
+                    "monthly_interview_limit": settings.get("monthly_interview_limit"),
+                    "monthly_cost_limit_usd": float(settings.get("monthly_cost_limit_usd")) if settings.get("monthly_cost_limit_usd") else None,
+                    "daily_cost_limit_usd": float(settings.get("daily_cost_limit_usd")) if settings.get("daily_cost_limit_usd") else None,
+                    "billing_email": settings.get("billing_email"),
+                    "admin_notes": settings.get("admin_notes"),
                 },
             }
             

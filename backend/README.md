@@ -48,11 +48,5 @@ cp .env.example .env
 uvicorn app.main:app --reload
 ```
 
-## Environment Variables
 
-## API Documentation
-
-Once running, visit:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
 

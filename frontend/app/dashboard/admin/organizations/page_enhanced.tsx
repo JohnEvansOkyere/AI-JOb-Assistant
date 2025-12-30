@@ -85,16 +85,6 @@ export default function AdminOrganizationsPage() {
     }
   }, [isAuthenticated, authLoading, router, user, sortBy, sortOrder, statusFilter, planFilter])
 
-  // Debounce search query
-  useEffect(() => {
-    if (!authLoading && isAuthenticated) {
-      const timeoutId = setTimeout(() => {
-        loadOrganizations()
-      }, 500)
-      return () => clearTimeout(timeoutId)
-    }
-  }, [searchQuery])
-
   const loadOrganizations = async () => {
     try {
       setLoading(true)
@@ -148,6 +138,14 @@ export default function AdminOrganizationsPage() {
     }
   }
 
+  const handleSearch = (query: string) => {
+    setSearchQuery(query)
+    // Debounce search - reload after user stops typing
+    const timeoutId = setTimeout(() => {
+      loadOrganizations()
+    }, 500)
+    return () => clearTimeout(timeoutId)
+  }
 
   const exportToCSV = () => {
     const headers = [
@@ -386,7 +384,10 @@ export default function AdminOrganizationsPage() {
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <Input
                       value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value)
+                        handleSearch(e.target.value)
+                      }}
                       placeholder="Search by name..."
                       className="pl-10"
                     />

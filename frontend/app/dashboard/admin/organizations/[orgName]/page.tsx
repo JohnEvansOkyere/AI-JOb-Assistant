@@ -13,8 +13,12 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { StatCard } from '@/components/ui/StatCard'
 import { apiClient } from '@/lib/api/client'
-import { Building2, Users, FileText, DollarSign, TrendingUp, AlertTriangle, CheckCircle } from 'lucide-react'
+import { Building2, Users, FileText, DollarSign, TrendingUp, AlertTriangle, CheckCircle, Settings, Pause, Play, XCircle, CreditCard, BarChart3, FileText as NotesIcon } from 'lucide-react'
 import { LineChart, BarChart } from '@/components/ui/SimpleChart'
+import { StatusChangeModal } from '@/components/admin/StatusChangeModal'
+import { PlanChangeModal } from '@/components/admin/PlanChangeModal'
+import { UsageLimitsModal } from '@/components/admin/UsageLimitsModal'
+import { AdminNotesModal } from '@/components/admin/AdminNotesModal'
 
 interface OrganizationDetail {
   org_name: string
@@ -42,6 +46,15 @@ interface OrganizationDetail {
     failed_requests: number
     error_rate_percent: number
   }
+  settings?: {
+    subscription_plan?: string
+    status?: string
+    monthly_interview_limit?: number | null
+    monthly_cost_limit_usd?: number | null
+    daily_cost_limit_usd?: number | null
+    billing_email?: string
+    admin_notes?: string
+  }
 }
 
 export default function AdminOrganizationDetailPage() {
@@ -52,6 +65,13 @@ export default function AdminOrganizationDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [detail, setDetail] = useState<OrganizationDetail | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  
+  // Modal states
+  const [showStatusModal, setShowStatusModal] = useState(false)
+  const [showPlanModal, setShowPlanModal] = useState(false)
+  const [showLimitsModal, setShowLimitsModal] = useState(false)
+  const [showNotesModal, setShowNotesModal] = useState(false)
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -107,6 +127,48 @@ export default function AdminOrganizationDetailPage() {
     }).format(amount)
   }
 
+  const handleSuccess = () => {
+    setSuccessMessage('Settings updated successfully')
+    setTimeout(() => setSuccessMessage(null), 5000)
+    loadDetail()
+  }
+
+  const getStatusBadge = (status?: string) => {
+    const statusColor = {
+      'active': 'bg-green-100 text-green-800 border-green-200',
+      'paused': 'bg-yellow-100 text-yellow-800 border-yellow-200',
+      'suspended': 'bg-red-100 text-red-800 border-red-200',
+      'trial': 'bg-blue-100 text-blue-800 border-blue-200',
+    }
+    const statusClass = statusColor[status as keyof typeof statusColor] || statusColor['active']
+    
+    return (
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusClass}`}>
+        {status === 'active' && <CheckCircle className="w-3 h-3 mr-1" />}
+        {status === 'paused' && <Pause className="w-3 h-3 mr-1" />}
+        {status === 'suspended' && <XCircle className="w-3 h-3 mr-1" />}
+        {status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Active'}
+      </span>
+    )
+  }
+
+  const getPlanBadge = (plan?: string) => {
+    const planColors = {
+      'free': 'bg-gray-100 text-gray-800',
+      'starter': 'bg-blue-100 text-blue-800',
+      'professional': 'bg-purple-100 text-purple-800',
+      'enterprise': 'bg-indigo-100 text-indigo-800',
+      'custom': 'bg-pink-100 text-pink-800',
+    }
+    const planClass = planColors[plan as keyof typeof planColors] || planColors['free']
+    
+    return (
+      <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${planClass}`}>
+        {plan ? plan.charAt(0).toUpperCase() + plan.slice(1) : 'Free'}
+      </span>
+    )
+  }
+
   if (authLoading || loading) {
     return (
       <DashboardLayout>
@@ -149,6 +211,151 @@ export default function AdminOrganizationDetailPage() {
             </div>
           </Card>
         )}
+
+        {successMessage && (
+          <Card>
+            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
+              {successMessage}
+            </div>
+          </Card>
+        )}
+
+        {/* Organization Settings & Admin Controls */}
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <Settings className="w-5 h-5" />
+              Organization Settings
+            </h2>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Status */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+              <div className="flex items-center gap-3">
+                {getStatusBadge(detail.settings?.status)}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowStatusModal(true)}
+                >
+                  Change
+                </Button>
+              </div>
+            </div>
+
+            {/* Subscription Plan */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Subscription Plan</label>
+              <div className="flex items-center gap-3">
+                {getPlanBadge(detail.settings?.subscription_plan)}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowPlanModal(true)}
+                >
+                  Change
+                </Button>
+              </div>
+            </div>
+
+            {/* Usage Limits with Progress Indicators */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Usage Limits</label>
+              <div className="space-y-3 text-sm">
+                {/* Monthly Interviews */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-gray-600">Monthly Interviews</span>
+                    <span className="font-semibold text-gray-900">
+                      {detail.usage.total_interviews}
+                      {detail.settings?.monthly_interview_limit ? ` / ${detail.settings.monthly_interview_limit}` : ' (Unlimited)'}
+                    </span>
+                  </div>
+                  {detail.settings?.monthly_interview_limit && (
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full ${
+                          (detail.usage.total_interviews / detail.settings.monthly_interview_limit) >= 0.9
+                            ? 'bg-red-500'
+                            : (detail.usage.total_interviews / detail.settings.monthly_interview_limit) >= 0.75
+                            ? 'bg-yellow-500'
+                            : 'bg-green-500'
+                        }`}
+                        style={{
+                          width: `${Math.min((detail.usage.total_interviews / detail.settings.monthly_interview_limit) * 100, 100)}%`
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Monthly Cost */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-gray-600">Monthly Cost</span>
+                    <span className="font-semibold text-gray-900">
+                      {formatCurrency(detail.ai_costs.total_cost_usd)}
+                      {detail.settings?.monthly_cost_limit_usd ? ` / ${formatCurrency(detail.settings.monthly_cost_limit_usd)}` : ' (Unlimited)'}
+                    </span>
+                  </div>
+                  {detail.settings?.monthly_cost_limit_usd && (
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full ${
+                          (detail.ai_costs.total_cost_usd / detail.settings.monthly_cost_limit_usd) >= 0.9
+                            ? 'bg-red-500'
+                            : (detail.ai_costs.total_cost_usd / detail.settings.monthly_cost_limit_usd) >= 0.75
+                            ? 'bg-yellow-500'
+                            : 'bg-green-500'
+                        }`}
+                        style={{
+                          width: `${Math.min((detail.ai_costs.total_cost_usd / detail.settings.monthly_cost_limit_usd) * 100, 100)}%`
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Daily Cost (would need daily cost calculation, showing placeholder for now) */}
+                {detail.settings?.daily_cost_limit_usd && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-gray-600">Daily Cost Limit</span>
+                      <span className="font-semibold text-gray-900">
+                        {formatCurrency(detail.settings.daily_cost_limit_usd)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowLimitsModal(true)}
+                className="mt-3"
+              >
+                Manage Limits
+              </Button>
+            </div>
+
+            {/* Admin Notes */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Admin Notes</label>
+              <div className="text-sm text-gray-600 mb-2 min-h-[40px] p-2 bg-gray-50 rounded border border-gray-200">
+                {detail.settings?.admin_notes || <span className="text-gray-400 italic">No notes</span>}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowNotesModal(true)}
+              >
+                {detail.settings?.admin_notes ? 'Edit Notes' : 'Add Notes'}
+              </Button>
+            </div>
+          </div>
+        </Card>
 
         {/* Summary Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -244,6 +451,43 @@ export default function AdminOrganizationDetailPage() {
             </div>
           </div>
         </Card>
+
+        {/* Admin Control Modals */}
+        <StatusChangeModal
+          isOpen={showStatusModal}
+          onClose={() => setShowStatusModal(false)}
+          currentStatus={detail.settings?.status}
+          orgName={detail.org_name}
+          onSuccess={handleSuccess}
+        />
+
+        <PlanChangeModal
+          isOpen={showPlanModal}
+          onClose={() => setShowPlanModal(false)}
+          currentPlan={detail.settings?.subscription_plan}
+          orgName={detail.org_name}
+          onSuccess={handleSuccess}
+        />
+
+        <UsageLimitsModal
+          isOpen={showLimitsModal}
+          onClose={() => setShowLimitsModal(false)}
+          orgName={detail.org_name}
+          currentLimits={{
+            monthly_interview_limit: detail.settings?.monthly_interview_limit,
+            monthly_cost_limit_usd: detail.settings?.monthly_cost_limit_usd,
+            daily_cost_limit_usd: detail.settings?.daily_cost_limit_usd,
+          }}
+          onSuccess={handleSuccess}
+        />
+
+        <AdminNotesModal
+          isOpen={showNotesModal}
+          onClose={() => setShowNotesModal(false)}
+          orgName={detail.org_name}
+          currentNotes={detail.settings?.admin_notes}
+          onSuccess={handleSuccess}
+        />
       </div>
     </DashboardLayout>
   )

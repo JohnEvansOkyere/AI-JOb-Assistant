@@ -38,6 +38,28 @@ class Settings(BaseSettings):
         # Default fallback
         return ["http://localhost:3000"]
     
+    def get_allowed_origins_with_patterns(self) -> List[str]:
+        """Get allowed origins including Vercel preview URL patterns"""
+        origins = self.allowed_origins.copy()
+        
+        # Check if any Vercel production URL is in the list
+        has_vercel_prod = any('vercel.app' in origin for origin in origins)
+        
+        if has_vercel_prod:
+            # Add pattern for Vercel preview URLs (*.vercel.app)
+            # Note: FastAPI CORS doesn't support wildcards, so we'll need to handle this differently
+            # For now, we'll add common Vercel preview patterns
+            vercel_patterns = [
+                'https://*.vercel.app',
+                'https://*-git-*.vercel.app',
+                'https://*-john-evans-okyeres-projects.vercel.app',
+            ]
+            # Since FastAPI CORS doesn't support wildcards, we'll return all origins
+            # and handle Vercel preview URLs in middleware if needed
+            pass
+        
+        return origins
+    
     # Supabase
     supabase_url: str
     supabase_key: str

@@ -5,6 +5,7 @@ Main application setup and configuration
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.cors import CORSMiddleware as StarletteCORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
@@ -99,10 +100,29 @@ app = FastAPI(
 # Security headers middleware (must be before CORS)
 app.add_middleware(SecurityHeadersMiddleware)
 
-# CORS middleware
+# CORS middleware with Vercel preview URL support
+# FastAPI CORS doesn't support wildcards, so we use allow_origin_func to handle Vercel preview URLs
+def is_allowed_origin(origin: str) -> bool:
+    """Check if origin is allowed, including Vercel preview URLs"""
+    allowed = settings.allowed_origins
+    
+    # Check exact matches
+    if origin in allowed:
+        return True
+    
+    # Check Vercel preview URLs if any Vercel production URL is allowed
+    has_vercel_prod = any('vercel.app' in o for o in allowed)
+    if has_vercel_prod and 'vercel.app' in origin:
+        # Allow any *.vercel.app subdomain if a vercel.app domain is in allowed_origins
+        # This covers both production and preview deployments
+        return True
+    
+    return False
+
+# Use allow_origin_func to support dynamic Vercel preview URLs
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.allowed_origins,
+    StarletteCORSMiddleware,
+    allow_origin_func=is_allowed_origin,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

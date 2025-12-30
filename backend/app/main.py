@@ -122,6 +122,7 @@ app.state.limiter = limiter
 async def startup_event():
     """Application startup tasks"""
     logger.info("Application starting", env=settings.app_env)
+    logger.info("CORS allowed origins configured", origins=settings.allowed_origins)
     
     # Validate environment variables
     try:

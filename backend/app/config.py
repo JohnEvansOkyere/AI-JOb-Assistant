@@ -4,7 +4,9 @@ Manages environment variables and application settings
 """
 
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from typing import List, Optional
+import os
 
 
 class Settings(BaseSettings):
@@ -16,6 +18,25 @@ class Settings(BaseSettings):
     app_debug: bool = True
     secret_key: str
     allowed_origins: List[str] = ["http://localhost:3000"]
+    
+    @field_validator('allowed_origins', mode='before')
+    @classmethod
+    def parse_allowed_origins(cls, v):
+        """Parse ALLOWED_ORIGINS from environment variable (comma-separated or JSON)"""
+        if isinstance(v, str):
+            # Try to parse as JSON first
+            import json
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, ValueError):
+                # If not JSON, split by comma
+                origins = [origin.strip() for origin in v.split(',') if origin.strip()]
+                return origins if origins else ["http://localhost:3000"]
+        # If it's already a list, return as-is
+        if isinstance(v, list):
+            return v
+        # Default fallback
+        return ["http://localhost:3000"]
     
     # Supabase
     supabase_url: str

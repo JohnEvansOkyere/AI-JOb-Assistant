@@ -111,7 +111,7 @@ export default function AdminDashboardPage() {
       ])
 
       if (orgsResponse.success && Array.isArray(orgsResponse.data)) {
-        setOrganizations(orgsResponse.data)
+        setOrganizations(orgsResponse.data as Organization[])
       }
 
       if (healthResponse.success && healthResponse.data) {
@@ -146,7 +146,7 @@ export default function AdminDashboardPage() {
   // Calculate summary stats
   const totalOrganizations = organizations.length
   const totalUsers = organizations.reduce((sum, org) => sum + org.active_users, 0)
-  const totalJobs = organizations.reduce((sum, org) => sum + (org.jobs_created || 0), 0)
+  const totalJobs = organizations.reduce((sum, org: Organization) => sum + (org.jobs_created || 0), 0)
   const totalInterviewsCompleted = organizations.reduce((sum, org) => sum + org.interviews_completed, 0)
   const totalCost = costData && costData.daily_costs
     ? Object.values(costData.daily_costs).reduce((sum, cost) => sum + cost, 0)

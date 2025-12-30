@@ -7,7 +7,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { useEffect } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { 
   Sparkles, 
   Users, 
@@ -21,9 +21,103 @@ import {
   Play,
   Shield,
   Code2,
-  Workflow
+  Workflow,
+  ChevronDown,
+  Star,
+  Lock,
+  Globe,
+  Award,
+  CheckCircle,
+  Mail,
+  Calendar
 } from 'lucide-react'
 import Link from 'next/link'
+
+// Animated Counter Component
+function AnimatedCounter({ 
+  target, 
+  suffix = '', 
+  prefix = '',
+  duration = 2000 
+}: { 
+  target: number; 
+  suffix?: string; 
+  prefix?: string;
+  duration?: number;
+}) {
+  const [count, setCount] = useState(0)
+  const [hasAnimated, setHasAnimated] = useState(false)
+  const elementRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && !hasAnimated) {
+            setHasAnimated(true)
+            const startTime = Date.now()
+            const animate = () => {
+              const elapsed = Date.now() - startTime
+              const progress = Math.min(elapsed / duration, 1)
+              const easeOutQuart = 1 - Math.pow(1 - progress, 4)
+              const currentCount = Math.floor(easeOutQuart * target)
+              setCount(currentCount)
+              if (progress < 1) {
+                requestAnimationFrame(animate)
+              } else {
+                setCount(target)
+              }
+            }
+            animate()
+          }
+        })
+      },
+      { threshold: 0.5 }
+    )
+
+    if (elementRef.current) {
+      observer.observe(elementRef.current)
+    }
+
+    return () => {
+      if (elementRef.current) {
+        observer.unobserve(elementRef.current)
+      }
+    }
+  }, [target, duration, hasAnimated])
+
+  return (
+    <div ref={elementRef} className="text-5xl font-bold mb-2">
+      {prefix}{count}{suffix}
+    </div>
+  )
+}
+
+// FAQ Item Component
+function FAQItem({ question, answer }: { question: string; answer: string }) {
+  const [isOpen, setIsOpen] = useState(false)
+
+  return (
+    <div className="border border-gray-200 rounded-lg overflow-hidden">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-6 py-4 text-left flex items-center justify-between hover:bg-gray-50 transition-colors"
+      >
+        <span className="font-semibold text-gray-900 pr-4">{question}</span>
+        <ChevronDown
+          className={`w-5 h-5 text-gray-500 flex-shrink-0 transition-transform ${
+            isOpen ? 'transform rotate-180' : ''
+          }`}
+        />
+      </button>
+      {isOpen && (
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
+          <p className="text-gray-600 leading-relaxed">{answer}</p>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function LandingPage() {
   const router = useRouter()
@@ -85,6 +179,12 @@ export default function LandingPage() {
                 About
               </Link>
               <Link 
+                href="#faq" 
+                className="text-gray-700 hover:text-gray-900 px-4 py-2 rounded-lg hover:bg-gray-100 transition-colors hidden sm:block"
+              >
+                FAQ
+              </Link>
+              <Link 
                 href="/login" 
                 className="text-gray-700 hover:text-gray-900 px-4 py-2 rounded-lg hover:bg-gray-100 transition-colors"
               >
@@ -136,8 +236,22 @@ export default function LandingPage() {
               </a>
             </div>
             <p className="text-sm text-gray-500 mt-6">
-              No credit card required • Free trial • Setup in minutes
+              ⚡ No credit card required • 🎁 14-day free trial • ⚙️ Setup in 5 minutes
             </p>
+            <div className="mt-8 flex items-center justify-center gap-6 text-sm text-gray-600 flex-wrap">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-turquoise-600" />
+                <span>Cancel anytime</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-turquoise-600" />
+                <span>No setup fees</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-turquoise-600" />
+                <span>Full access</span>
+              </div>
+            </div>
           </div>
 
           {/* Demo Video Section */}
@@ -173,7 +287,7 @@ export default function LandingPage() {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             {/* Feature 1 */}
-            <div className="p-6 rounded-xl border border-gray-200 hover:border-turquoise-300 hover:shadow-lg transition-all bg-white">
+            <div className="p-6 rounded-xl border border-gray-200 hover:border-turquoise-300 hover:shadow-xl transition-all duration-300 bg-white transform hover:-translate-y-2 hover:scale-[1.02] cursor-pointer">
               <div className="w-12 h-12 bg-turquoise-100 rounded-lg flex items-center justify-center mb-4">
                 <MessageSquare className="w-6 h-6 text-turquoise-600" />
               </div>
@@ -184,7 +298,7 @@ export default function LandingPage() {
             </div>
 
             {/* Feature 2 */}
-            <div className="p-6 rounded-xl border border-gray-200 hover:border-turquoise-300 hover:shadow-lg transition-all bg-white">
+            <div className="p-6 rounded-xl border border-gray-200 hover:border-yellow-300 hover:shadow-xl transition-all duration-300 bg-white transform hover:-translate-y-2 hover:scale-[1.02] cursor-pointer">
               <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center mb-4">
                 <FileText className="w-6 h-6 text-yellow-600" />
               </div>
@@ -195,7 +309,7 @@ export default function LandingPage() {
             </div>
 
             {/* Feature 3 */}
-            <div className="p-6 rounded-xl border border-gray-200 hover:border-turquoise-300 hover:shadow-lg transition-all bg-white">
+            <div className="p-6 rounded-xl border border-gray-200 hover:border-turquoise-300 hover:shadow-xl transition-all duration-300 bg-white transform hover:-translate-y-2 hover:scale-[1.02] cursor-pointer">
               <div className="w-12 h-12 bg-turquoise-100 rounded-lg flex items-center justify-center mb-4">
                 <Brain className="w-6 h-6 text-turquoise-600" />
               </div>
@@ -206,7 +320,7 @@ export default function LandingPage() {
             </div>
 
             {/* Feature 4 */}
-            <div className="p-6 rounded-xl border border-gray-200 hover:border-turquoise-300 hover:shadow-lg transition-all bg-white">
+            <div className="p-6 rounded-xl border border-gray-200 hover:border-yellow-300 hover:shadow-xl transition-all duration-300 bg-white transform hover:-translate-y-2 hover:scale-[1.02] cursor-pointer">
               <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center mb-4">
                 <Users className="w-6 h-6 text-yellow-600" />
               </div>
@@ -217,18 +331,18 @@ export default function LandingPage() {
             </div>
 
             {/* Feature 5 */}
-            <div className="p-6 rounded-xl border border-gray-200 hover:border-turquoise-300 hover:shadow-lg transition-all bg-white">
+            <div className="p-6 rounded-xl border border-gray-200 hover:border-turquoise-300 hover:shadow-xl transition-all duration-300 bg-white transform hover:-translate-y-2 hover:scale-[1.02] cursor-pointer">
               <div className="w-12 h-12 bg-turquoise-100 rounded-lg flex items-center justify-center mb-4">
                 <BarChart3 className="w-6 h-6 text-turquoise-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Analytics & Reports</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Advanced Analytics and Reports</h3>
               <p className="text-gray-600">
                 Track hiring metrics, interview performance, and make data-driven decisions with detailed analytics.
               </p>
             </div>
 
             {/* Feature 6 */}
-            <div className="p-6 rounded-xl border border-gray-200 hover:border-turquoise-300 hover:shadow-lg transition-all bg-white">
+            <div className="p-6 rounded-xl border border-gray-200 hover:border-yellow-300 hover:shadow-xl transition-all duration-300 bg-white transform hover:-translate-y-2 hover:scale-[1.02] cursor-pointer">
               <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center mb-4">
                 <Workflow className="w-6 h-6 text-yellow-600" />
               </div>
@@ -254,7 +368,7 @@ export default function LandingPage() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-8">
-            <div className="bg-white p-8 rounded-xl border border-gray-200 shadow-sm">
+            <div className="bg-white p-8 rounded-xl border border-gray-200 shadow-sm hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 hover:scale-[1.02] cursor-pointer hover:border-turquoise-300">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 bg-turquoise-100 rounded-lg flex items-center justify-center">
                   <Users className="w-5 h-5 text-turquoise-600" />
@@ -280,7 +394,7 @@ export default function LandingPage() {
               </ul>
             </div>
 
-            <div className="bg-white p-8 rounded-xl border border-gray-200 shadow-sm">
+            <div className="bg-white p-8 rounded-xl border border-gray-200 shadow-sm hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 hover:scale-[1.02] cursor-pointer hover:border-yellow-300">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
                   <Zap className="w-5 h-5 text-yellow-600" />
@@ -309,6 +423,169 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Trust & Security Section */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-gray-50 to-white">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
+              Secure & Compliant
+            </h2>
+            <p className="text-xl text-gray-600 max-w-2xl mx-auto mb-8">
+              Your data security and candidate privacy are our top priorities
+            </p>
+            <p className="text-lg text-gray-700 font-medium mb-6">
+              Join 500+ companies already using VeloxaRecruit
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            <div className="text-center p-6 bg-white rounded-xl border border-gray-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 hover:scale-[1.02] cursor-pointer hover:border-turquoise-300">
+              <div className="w-16 h-16 bg-turquoise-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Lock className="w-8 h-8 text-turquoise-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">End-to-End Encryption</h3>
+              <p className="text-gray-600">
+                All candidate data is encrypted in transit and at rest using industry-standard protocols
+              </p>
+            </div>
+
+            <div className="text-center p-6 bg-white rounded-xl border border-gray-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 hover:scale-[1.02] cursor-pointer hover:border-turquoise-300">
+              <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Shield className="w-8 h-8 text-yellow-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">GDPR Compliant</h3>
+              <p className="text-gray-600">
+                Fully compliant with GDPR, CCPA, and other data protection regulations worldwide
+              </p>
+            </div>
+
+            <div className="text-center p-6 bg-white rounded-xl border border-gray-200 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 hover:scale-[1.02] cursor-pointer hover:border-turquoise-300">
+              <div className="w-16 h-16 bg-turquoise-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Globe className="w-8 h-8 text-turquoise-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">SOC 2 Certified</h3>
+              <p className="text-gray-600">
+                Enterprise-grade security with regular audits and compliance certifications
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-12 grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+            <div className="flex items-start gap-3 p-4 bg-white rounded-lg border border-gray-200">
+              <CheckCircle className="w-6 h-6 text-turquoise-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-1">Regular Security Audits</h4>
+                <p className="text-sm text-gray-600">Continuous monitoring and third-party security assessments</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-4 bg-white rounded-lg border border-gray-200">
+              <CheckCircle className="w-6 h-6 text-turquoise-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-1">Data Retention Controls</h4>
+                <p className="text-sm text-gray-600">Configurable data retention policies and automated deletion</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-4 bg-white rounded-lg border border-gray-200">
+              <CheckCircle className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-1">Access Controls</h4>
+                <p className="text-sm text-gray-600">Role-based permissions and SSO support for enterprise</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-4 bg-white rounded-lg border border-gray-200">
+              <CheckCircle className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-1">99.9% Uptime SLA</h4>
+                <p className="text-sm text-gray-600">Reliable infrastructure with guaranteed availability</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Testimonials Section */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-white">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
+              Trusted by Hiring Teams Worldwide
+            </h2>
+            <p className="text-xl text-gray-600 mb-8">
+              See what our customers are saying about VeloxaRecruit
+            </p>
+            <Link 
+              href="/register"
+              className="inline-flex items-center gap-2 bg-turquoise-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-turquoise-700 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+            >
+              Join Them Today
+              <ArrowRight className="w-5 h-5" />
+            </Link>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            <div className="bg-gradient-to-br from-turquoise-50 to-white p-8 rounded-xl border border-turquoise-200 shadow-sm hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 hover:scale-[1.02] cursor-pointer hover:border-turquoise-400">
+              <div className="flex items-center gap-1 mb-4">
+                {[...Array(5)].map((_, i) => (
+                  <Star key={i} className="w-5 h-5 fill-yellow-400 text-yellow-400" />
+                ))}
+              </div>
+              <p className="text-gray-700 mb-6 leading-relaxed">
+                "VeloxaRecruit has completely transformed our hiring process. We've reduced our time-to-hire by 75% and the AI interviews provide insights we never had before."
+              </p>
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-turquoise-600 rounded-full flex items-center justify-center text-white font-semibold">
+                  SJ
+                </div>
+                <div>
+                  <div className="font-semibold text-gray-900">Sarah Johnson</div>
+                  <div className="text-sm text-gray-600">HR Director, TechCorp</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-yellow-50 to-white p-8 rounded-xl border border-yellow-200 shadow-sm hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 hover:scale-[1.02] cursor-pointer hover:border-yellow-400">
+              <div className="flex items-center gap-1 mb-4">
+                {[...Array(5)].map((_, i) => (
+                  <Star key={i} className="w-5 h-5 fill-yellow-400 text-yellow-400" />
+                ))}
+              </div>
+              <p className="text-gray-700 mb-6 leading-relaxed">
+                "The automated CV screening alone saves us 20 hours per week. Combined with the AI interviews, we're hiring better candidates faster than ever."
+              </p>
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-yellow-500 rounded-full flex items-center justify-center text-white font-semibold">
+                  MK
+                </div>
+                <div>
+                  <div className="font-semibold text-gray-900">Michael Kim</div>
+                  <div className="text-sm text-gray-600">Recruitment Manager, StartupHub</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-turquoise-50 to-white p-8 rounded-xl border border-turquoise-200 shadow-sm hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 hover:scale-[1.02] cursor-pointer hover:border-turquoise-400">
+              <div className="flex items-center gap-1 mb-4">
+                {[...Array(5)].map((_, i) => (
+                  <Star key={i} className="w-5 h-5 fill-yellow-400 text-yellow-400" />
+                ))}
+              </div>
+              <p className="text-gray-700 mb-6 leading-relaxed">
+                "As a growing company, we needed a solution that could scale. VeloxaRecruit handles everything from 10 to 1000 interviews per month effortlessly."
+              </p>
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-turquoise-600 rounded-full flex items-center justify-center text-white font-semibold">
+                  EL
+                </div>
+                <div>
+                  <div className="font-semibold text-gray-900">Emily Liu</div>
+                  <div className="text-sm text-gray-600">Head of Talent, ScaleUp Inc</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Pricing Section */}
       <section className="py-20 px-4 sm:px-6 lg:px-8 bg-white" id="pricing">
         <div className="max-w-7xl mx-auto">
@@ -323,7 +600,7 @@ export default function LandingPage() {
 
           <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
             {/* Starter Plan */}
-            <div className="border-2 border-gray-200 rounded-xl p-8 bg-white hover:border-turquoise-300 transition-all hover:shadow-lg">
+            <div className="border-2 border-gray-200 rounded-xl p-8 bg-white hover:border-turquoise-300 transition-all duration-300 hover:shadow-xl transform hover:-translate-y-2 hover:scale-[1.02] cursor-pointer">
               <div className="mb-6">
                 <h3 className="text-2xl font-bold text-gray-900 mb-2">Starter</h3>
                 <p className="text-gray-600">Perfect for small teams getting started</p>
@@ -365,7 +642,7 @@ export default function LandingPage() {
             </div>
 
             {/* Professional Plan - Featured */}
-            <div className="border-2 border-turquoise-600 rounded-xl p-8 bg-gradient-to-br from-turquoise-50 to-white relative hover:shadow-xl transition-all">
+            <div className="border-2 border-turquoise-600 rounded-xl p-8 bg-gradient-to-br from-turquoise-50 to-white relative hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-3 hover:scale-[1.03] cursor-pointer">
               <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
                 <span className="bg-yellow-400 text-gray-900 px-4 py-1 rounded-full text-sm font-semibold">
                   Most Popular
@@ -420,7 +697,7 @@ export default function LandingPage() {
             </div>
 
             {/* Enterprise Plan */}
-            <div className="border-2 border-gray-200 rounded-xl p-8 bg-white hover:border-turquoise-300 transition-all hover:shadow-lg">
+            <div className="border-2 border-gray-200 rounded-xl p-8 bg-white hover:border-turquoise-300 transition-all duration-300 hover:shadow-xl transform hover:-translate-y-2 hover:scale-[1.02] cursor-pointer">
               <div className="mb-6">
                 <h3 className="text-2xl font-bold text-gray-900 mb-2">Enterprise</h3>
                 <p className="text-gray-600">For large organizations</p>
@@ -475,12 +752,27 @@ export default function LandingPage() {
           </div>
 
           <div className="text-center mt-12">
-            <p className="text-gray-600 mb-4">
-              All plans include a 14-day free trial. No credit card required.
+            <p className="text-lg font-semibold text-gray-900 mb-2">
+              🎁 All plans include a 14-day free trial
             </p>
-            <p className="text-sm text-gray-500">
-              Need help choosing? <Link href="#" className="text-turquoise-600 hover:underline">Contact our team</Link>
+            <p className="text-gray-600 mb-6">
+              No credit card required • Full access to all features • Cancel anytime
             </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+              <Link 
+                href="/register"
+                className="bg-turquoise-600 text-white px-10 py-4 rounded-lg text-lg font-semibold hover:bg-turquoise-700 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 flex items-center gap-2"
+              >
+                Start Your Free Trial
+                <ArrowRight className="w-5 h-5" />
+              </Link>
+              <Link 
+                href="#"
+                className="text-turquoise-600 hover:text-turquoise-700 font-medium underline"
+              >
+                Need help choosing? Contact our team
+              </Link>
+            </div>
           </div>
         </div>
       </section>
@@ -488,19 +780,32 @@ export default function LandingPage() {
       {/* Stats Section */}
       <section className="py-20 px-4 sm:px-6 lg:px-8 bg-turquoise-600 text-white">
         <div className="max-w-7xl mx-auto">
-          <div className="grid md:grid-cols-3 gap-8 text-center">
-            <div>
-              <div className="text-5xl font-bold mb-2">10x</div>
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold mb-4">See the Results for Yourself</h2>
+            <p className="text-turquoise-100 text-lg">Join thousands of companies transforming their hiring process</p>
+          </div>
+          <div className="grid md:grid-cols-3 gap-8 text-center mb-12">
+            <div className="transform transition-all duration-300 hover:scale-105">
+              <AnimatedCounter target={10} suffix="x" />
               <div className="text-turquoise-100 text-lg">Faster Screening</div>
             </div>
-            <div>
-              <div className="text-5xl font-bold mb-2">95%</div>
+            <div className="transform transition-all duration-300 hover:scale-105">
+              <AnimatedCounter target={95} suffix="%" />
               <div className="text-turquoise-100 text-lg">Time Saved</div>
             </div>
-            <div>
+            <div className="transform transition-all duration-300 hover:scale-105">
               <div className="text-5xl font-bold mb-2">24/7</div>
               <div className="text-turquoise-100 text-lg">Always Available</div>
             </div>
+          </div>
+          <div className="text-center">
+            <Link 
+              href="/register"
+              className="inline-flex items-center gap-2 bg-white text-turquoise-600 px-10 py-4 rounded-lg text-lg font-semibold hover:bg-gray-100 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+            >
+              Get Started Free
+              <ArrowRight className="w-5 h-5" />
+            </Link>
           </div>
         </div>
       </section>
@@ -576,39 +881,133 @@ export default function LandingPage() {
             </div>
 
             <div className="mt-12 text-center">
+              <p className="text-lg text-gray-700 mb-4 font-medium">
+                Ready to revolutionize your hiring process?
+              </p>
               <Link 
                 href="/register"
-                className="inline-block bg-turquoise-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-turquoise-700 transition-colors"
+                className="inline-flex items-center gap-2 bg-turquoise-600 text-white px-10 py-4 rounded-lg text-lg font-semibold hover:bg-turquoise-700 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
               >
                 Start Your Free Trial Today
+                <ArrowRight className="w-5 h-5" />
               </Link>
+              <p className="text-sm text-gray-500 mt-4">
+                No credit card required • Setup in 5 minutes
+              </p>
             </div>
           </div>
         </div>
       </section>
 
+      {/* FAQ Section */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-white" id="faq">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
+              Frequently Asked Questions
+            </h2>
+            <p className="text-xl text-gray-600">
+              Everything you need to know about VeloxaRecruit
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            {/* FAQ Item 1 */}
+            <FAQItem
+              question="How does AI interviewing work?"
+              answer="VeloxaRecruit uses advanced AI to conduct natural, conversational interviews. The AI asks questions based on the job description and candidate's CV, adapts follow-up questions based on responses, and analyzes answers in real-time. You receive a detailed report with insights, scores, and recommendations."
+            />
+
+            {/* FAQ Item 2 */}
+            <FAQItem
+              question="Is the AI biased against candidates?"
+              answer="No. Our AI is designed to be objective and bias-free. We use structured evaluation criteria based solely on job requirements and candidate qualifications. The system is regularly audited for fairness, and all interviews are recorded for transparency and review."
+            />
+
+            {/* FAQ Item 3 */}
+            <FAQItem
+              question="What happens to candidate data?"
+              answer="Candidate data is encrypted and stored securely. We're GDPR and CCPA compliant, and candidates can request access to or deletion of their data at any time. You control data retention policies, and we never share candidate information with third parties."
+            />
+
+            {/* FAQ Item 4 */}
+            <FAQItem
+              question="Can we customize interview questions?"
+              answer="Yes! You can customize interview questions by job role, add your own questions, set difficulty levels, and configure the interview flow. Our AI will generate contextually relevant follow-up questions based on your specifications."
+            />
+
+            {/* FAQ Item 5 */}
+            <FAQItem
+              question="Do you integrate with ATS systems?"
+              answer="Yes, VeloxaRecruit offers API access for integration with popular ATS systems. We also support webhook integrations and can work with most systems that support standard data formats. Enterprise plans include dedicated integration support."
+            />
+
+            {/* FAQ Item 6 */}
+            <FAQItem
+              question="What languages are supported?"
+              answer="Currently, interviews are conducted in English. However, our AI can analyze CVs in multiple languages and we're continuously expanding language support. Contact us for specific language requirements."
+            />
+
+            {/* FAQ Item 7 */}
+            <FAQItem
+              question="How do I cancel my subscription?"
+              answer="You can cancel your subscription at any time from your account settings. There are no cancellation fees, and you'll retain access until the end of your billing period. Your data will be available for export for 30 days after cancellation."
+            />
+
+            {/* FAQ Item 8 */}
+            <FAQItem
+              question="Is there a free trial?"
+              answer="Yes! All plans include a 14-day free trial with full access to all features. No credit card required to start. You can upgrade, downgrade, or cancel anytime during the trial period."
+            />
+          </div>
+        </div>
+      </section>
+
       {/* CTA Section */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-turquoise-50 to-yellow-50">
-        <div className="max-w-4xl mx-auto text-center">
+      <section className="py-24 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-turquoise-50 to-yellow-50 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-turquoise-100/20 to-yellow-100/20"></div>
+        <div className="max-w-4xl mx-auto text-center relative z-10">
+          <div className="inline-flex items-center gap-2 bg-yellow-100 text-yellow-800 px-4 py-2 rounded-full text-sm font-medium mb-6">
+            <Zap className="w-4 h-4" />
+            Limited Time: 14-Day Free Trial
+          </div>
           <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6">
             Ready to Transform Your Hiring?
           </h2>
-          <p className="text-xl text-gray-600 mb-8">
+          <p className="text-xl text-gray-600 mb-4">
             Join thousands of companies using AI to hire faster and smarter.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <p className="text-lg text-gray-700 mb-8 font-medium">
+            Start your free trial today. No credit card required.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-6">
             <Link 
               href="/register"
-              className="bg-turquoise-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-turquoise-700 transition-all shadow-lg hover:shadow-xl"
+              className="bg-turquoise-600 text-white px-10 py-5 rounded-lg text-xl font-bold hover:bg-turquoise-700 transition-all shadow-2xl hover:shadow-3xl transform hover:-translate-y-1 flex items-center gap-2 w-full sm:w-auto justify-center"
             >
-              Start Free Trial
+              Start Free Trial Now
+              <ArrowRight className="w-6 h-6" />
             </Link>
             <Link 
               href="/login"
-              className="bg-white text-gray-900 border-2 border-gray-300 px-8 py-4 rounded-lg text-lg font-semibold hover:border-gray-400 transition-all"
+              className="bg-white text-gray-900 border-2 border-gray-300 px-8 py-5 rounded-lg text-lg font-semibold hover:border-gray-400 hover:bg-gray-50 transition-all w-full sm:w-auto"
             >
               Sign In
             </Link>
+          </div>
+          <div className="flex items-center justify-center gap-6 text-sm text-gray-600 flex-wrap">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-turquoise-600" />
+              <span>No credit card required</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-turquoise-600" />
+              <span>Cancel anytime</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-turquoise-600" />
+              <span>Full access included</span>
+            </div>
           </div>
         </div>
       </section>
@@ -637,6 +1036,7 @@ export default function LandingPage() {
                 <li><Link href="#features" className="hover:text-turquoise-400 transition-colors">Features</Link></li>
                 <li><Link href="#pricing" className="hover:text-turquoise-400 transition-colors">Pricing</Link></li>
                 <li><Link href="#demo" className="hover:text-turquoise-400 transition-colors">Demo</Link></li>
+                <li><Link href="#faq" className="hover:text-turquoise-400 transition-colors">FAQ</Link></li>
               </ul>
             </div>
             <div>

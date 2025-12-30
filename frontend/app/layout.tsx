@@ -4,8 +4,8 @@ import { Providers } from './providers'
 import { ErrorBoundaryWrapper } from '@/components/ErrorBoundaryWrapper'
 
 export const metadata: Metadata = {
-  title: 'AI Voice Interview Platform',
-  description: 'Conduct AI-powered voice interviews based on job descriptions and CVs',
+  title: 'VeloxaRecruit - AI-Powered Recruitment Platform',
+  description: 'Transform hiring with AI voice interviews. Screen faster, hire smarter with VeloxaRecruit by Veloxa Technologies Ltd.',
 }
 
 export default function RootLayout({

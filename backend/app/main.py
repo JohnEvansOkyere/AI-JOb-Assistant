@@ -4,8 +4,7 @@ Main application setup and configuration
 """
 
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.cors import CORSMiddleware as StarletteCORSMiddleware
+from starlette.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
@@ -130,7 +129,7 @@ def is_allowed_origin(origin: str) -> bool:
 
 # Use allow_origin_func to support dynamic Vercel preview URLs
 app.add_middleware(
-    StarletteCORSMiddleware,
+    CORSMiddleware,
     allow_origin_func=is_allowed_origin,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],

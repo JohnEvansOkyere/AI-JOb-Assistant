@@ -146,7 +146,9 @@ export default function AdminDashboardPage() {
   // Calculate summary stats
   const totalOrganizations = organizations.length
   const totalUsers = organizations.reduce((sum, org) => sum + org.active_users, 0)
-  const totalJobs = organizations.reduce((sum, org: Organization) => sum + (org.jobs_created || 0), 0)
+  const totalJobs = (organizations as Organization[]).reduce((sum: number, org: Organization) => {
+    return sum + (org.jobs_created || 0)
+  }, 0)
   const totalInterviewsCompleted = organizations.reduce((sum, org) => sum + org.interviews_completed, 0)
   const totalCost = costData && costData.daily_costs
     ? Object.values(costData.daily_costs).reduce((sum, cost) => sum + cost, 0)

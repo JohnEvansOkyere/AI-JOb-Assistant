@@ -89,8 +89,10 @@ export default function DashboardPage() {
     <DashboardLayout>
       <div className="space-y-6">
         {/* Welcome Section */}
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Welcome back!</h1>
+        <div className="bg-gradient-to-r from-turquoise-50 to-yellow-50 dark:from-turquoise-900/20 dark:to-yellow-900/20 rounded-lg p-6 border border-turquoise-100 dark:border-turquoise-800">
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-turquoise-600 to-turquoise-700 dark:from-turquoise-400 dark:to-turquoise-300 bg-clip-text text-transparent">
+            Welcome back!
+          </h1>
           <p className="text-gray-600 dark:text-gray-400 mt-2">Here's what's happening with your recruitment pipeline.</p>
         </div>
 
@@ -158,7 +160,7 @@ export default function DashboardPage() {
               <Button
                 variant="primary"
                 onClick={() => router.push('/dashboard/jobs/new')}
-                className="w-full justify-start"
+                className="w-full justify-start bg-turquoise-600 hover:bg-turquoise-700 text-white"
                 size="lg"
               >
                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -232,7 +234,7 @@ export default function DashboardPage() {
               </div>
               <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                 <div
-                  className="bg-primary-500 dark:bg-primary-400 h-2 rounded-full transition-all"
+                  className="bg-turquoise-500 dark:bg-turquoise-400 h-2 rounded-full transition-all"
                   style={{
                     width: stats?.total_interviews
                       ? `${((stats.completed_interviews || 0) / stats.total_interviews) * 100}%`
@@ -324,7 +326,7 @@ export default function DashboardPage() {
               </div>
               <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
                 <div
-                  className="bg-blue-500 dark:bg-blue-400 h-3 rounded-full transition-all"
+                  className="bg-turquoise-500 dark:bg-turquoise-400 h-3 rounded-full transition-all"
                   style={{
                     width: stats?.total_applications && stats?.total_interviews
                       ? `${(stats.total_interviews / stats.total_applications) * 100}%`
@@ -362,7 +364,7 @@ export default function DashboardPage() {
               </div>
               <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
                 <div
-                  className="bg-purple-500 dark:bg-purple-400 h-3 rounded-full transition-all"
+                  className="bg-turquoise-500 dark:bg-turquoise-400 h-3 rounded-full transition-all"
                   style={{
                     width: stats?.total_applications && stats?.qualified_candidates
                       ? `${(stats.qualified_candidates / stats.total_applications) * 100}%`
@@ -376,29 +378,29 @@ export default function DashboardPage() {
           {/* Quick Stats Summary */}
           <Card title="Quick Stats Summary">
             <div className="grid grid-cols-2 gap-4">
-              <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+              <div className="text-center p-4 bg-turquoise-50 dark:bg-turquoise-900/20 rounded-lg border border-turquoise-100 dark:border-turquoise-800 hover:border-turquoise-300 dark:hover:border-turquoise-600 transition-colors">
+                <div className="text-2xl font-bold text-turquoise-600 dark:text-turquoise-400">
                   {stats?.total_applications || 0}
                 </div>
-                <div className="text-xs text-blue-700 dark:text-blue-300 mt-1">Total Applications</div>
+                <div className="text-xs text-turquoise-700 dark:text-turquoise-300 mt-1">Total Applications</div>
               </div>
-              <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+              <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-100 dark:border-green-800 hover:border-green-300 dark:hover:border-green-600 transition-colors">
                 <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                   {stats?.qualified_candidates || 0}
                 </div>
                 <div className="text-xs text-green-700 dark:text-green-300 mt-1">Qualified</div>
               </div>
-              <div className="text-center p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
-                <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+              <div className="text-center p-4 bg-turquoise-50 dark:bg-turquoise-900/20 rounded-lg border border-turquoise-100 dark:border-turquoise-800 hover:border-turquoise-300 dark:hover:border-turquoise-600 transition-colors">
+                <div className="text-2xl font-bold text-turquoise-600 dark:text-turquoise-400">
                   {stats?.total_interviews || 0}
                 </div>
-                <div className="text-xs text-purple-700 dark:text-purple-300 mt-1">Interviews</div>
+                <div className="text-xs text-turquoise-700 dark:text-turquoise-300 mt-1">Interviews</div>
               </div>
-              <div className="text-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
-                <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+              <div className="text-center p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-100 dark:border-yellow-800 hover:border-yellow-300 dark:hover:border-yellow-600 transition-colors">
+                <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
                   {stats?.completed_interviews || 0}
                 </div>
-                <div className="text-xs text-orange-700 dark:text-orange-300 mt-1">Completed</div>
+                <div className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">Completed</div>
               </div>
             </div>
           </Card>

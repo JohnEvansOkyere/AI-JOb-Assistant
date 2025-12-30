@@ -198,8 +198,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Mobile menu button */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate max-w-[60%]">
-          {companyTitle}
+        <h1 className="text-xl font-bold bg-gradient-to-r from-turquoise-600 to-turquoise-700 dark:from-turquoise-400 dark:to-turquoise-300 bg-clip-text text-transparent truncate max-w-[60%]">
+          VeloxaRecruit
         </h1>
         <div className="flex items-center gap-2">
           <ThemeToggle variant="icon" />
@@ -225,9 +225,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       >
         <div className="h-full flex flex-col">
           {/* Logo/Brand */}
-          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 hidden lg:block">
-            <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate">
-              {companyTitle}
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 hidden lg:block bg-gradient-to-r from-turquoise-50 to-yellow-50 dark:from-turquoise-900/20 dark:to-yellow-900/20">
+            <h1 className="text-xl font-bold bg-gradient-to-r from-turquoise-600 to-turquoise-700 dark:from-turquoise-400 dark:to-turquoise-300 bg-clip-text text-transparent truncate">
+              VeloxaRecruit
             </h1>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
               Recruiter Dashboard
@@ -246,14 +246,14 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 className={clsx(
                   'w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors',
                   isActive(item.href)
-                    ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    ? 'bg-turquoise-50 dark:bg-turquoise-900/30 text-turquoise-700 dark:text-turquoise-400 border-l-4 border-turquoise-500'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-turquoise-50 dark:hover:bg-turquoise-900/20 hover:text-turquoise-600 dark:hover:text-turquoise-400'
                 )}
               >
                 {item.icon}
                 <span>{item.name}</span>
                 {item.badge && (
-                  <span className="ml-auto bg-primary-600 text-white text-xs px-2 py-0.5 rounded-full">
+                  <span className="ml-auto bg-turquoise-600 text-white text-xs px-2 py-0.5 rounded-full">
                     {item.badge}
                   </span>
                 )}
@@ -264,8 +264,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           {/* User section */}
           <div className="px-4 py-4 border-t border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
-                <span className="text-primary-700 dark:text-primary-400 font-semibold">
+              <div className="w-10 h-10 rounded-full bg-turquoise-100 dark:bg-turquoise-900/30 flex items-center justify-center border-2 border-turquoise-200 dark:border-turquoise-800">
+                <span className="text-turquoise-700 dark:text-turquoise-400 font-semibold">
                   {user?.full_name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}
                 </span>
               </div>

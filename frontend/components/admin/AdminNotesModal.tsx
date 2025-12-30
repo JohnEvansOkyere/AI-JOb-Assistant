@@ -76,8 +76,9 @@ export function AdminNotesModal({
         }
       }}
     >
-      <Card className="w-full max-w-2xl mx-4" onClick={(e) => e.stopPropagation()}>
-        <div className="p-6">
+      <div className="w-full max-w-2xl mx-4" onClick={(e) => e.stopPropagation()}>
+        <Card>
+          <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-gray-900">Admin Notes</h2>
             <button
@@ -132,7 +133,8 @@ export function AdminNotesModal({
             </Button>
           </div>
         </div>
-      </Card>
+        </Card>
+      </div>
     </div>
   )
 }

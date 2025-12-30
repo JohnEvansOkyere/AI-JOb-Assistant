@@ -131,8 +131,9 @@ export function UsageLimitsModal({
         }
       }}
     >
-      <Card className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="p-6">
+      <div className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <Card>
+          <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-gray-900">Manage Usage Limits</h2>
             <button
@@ -277,7 +278,8 @@ export function UsageLimitsModal({
             </Button>
           </div>
         </div>
-      </Card>
+        </Card>
+      </div>
     </div>
   )
 }

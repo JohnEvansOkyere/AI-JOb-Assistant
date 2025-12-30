@@ -84,8 +84,9 @@ export function StatusChangeModal({
         }
       }}
     >
-      <Card className="w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
-        <div className="p-6">
+      <div className="w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
+        <Card>
+          <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-gray-900">Change Organization Status</h2>
             <button
@@ -157,7 +158,8 @@ export function StatusChangeModal({
             </Button>
           </div>
         </div>
-      </Card>
+        </Card>
+      </div>
     </div>
   )
 }

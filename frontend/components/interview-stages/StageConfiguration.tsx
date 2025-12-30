@@ -63,8 +63,8 @@ export function StageConfiguration({ jobId, onStagesConfigured }: StageConfigura
   const loadExistingStages = async () => {
     try {
       setLoading(true)
-      const response = await apiClient.get(`/interview-stages/jobs/${jobId}/stages`)
-      if (response.success && response.data && response.data.length > 0) {
+      const response = await apiClient.get<Stage[]>(`/interview-stages/jobs/${jobId}/stages`)
+      if (response.success && response.data && Array.isArray(response.data) && response.data.length > 0) {
         setStages(response.data)
         setShowCustomBuilder(true) // Show custom builder when stages exist
       } else {

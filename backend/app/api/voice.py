@@ -1122,6 +1122,26 @@ async def voice_interview(
                 if final_message_text:
                     logger.info("Final message received", interview_id=str(interview["id"]), message=final_message_text[:100])
                 
+                # Build transcript from all responses before completing
+                try:
+                    all_responses = db.service_client.table("interview_responses").select("question_id, response_text").eq("interview_id", str(interview["id"])).order("created_at").execute()
+                    
+                    transcript_parts = []
+                    for resp in (all_responses.data or []):
+                        response_text = resp.get("response_text") or ""
+                        if response_text:
+                            transcript_parts.append(response_text)
+                    
+                    # Add final message if provided
+                    if final_message_text:
+                        transcript_parts.append(final_message_text)
+                    
+                    transcript = "\n\n".join(transcript_parts) if transcript_parts else None
+                    logger.info("Built transcript for completion", interview_id=str(interview["id"]), transcript_length=len(transcript) if transcript else 0, num_responses=len(transcript_parts))
+                except Exception as transcript_err:
+                    logger.warning("Failed to build transcript", error=str(transcript_err), interview_id=str(interview["id"]))
+                    transcript = None
+                
                 # Send closing message
                 await websocket.send_text(
                     json.dumps(
@@ -1136,7 +1156,10 @@ async def voice_interview(
                 logger.info("Starting interview completion process", interview_id=str(interview["id"]), interview_mode=interview_mode)
                 try:
                     # Complete the interview - this updates the status to "completed"
-                    completed_interview = await InterviewService.complete_interview(UUID(interview["id"]))
+                    completed_interview = await InterviewService.complete_interview(
+                        UUID(interview["id"]),
+                        transcript=transcript
+                    )
                     logger.info(
                         "Interview marked as completed successfully",
                         interview_id=str(interview["id"]),
@@ -1235,7 +1258,35 @@ async def voice_interview(
                 )
 
     except WebSocketDisconnect:
-        logger.info("Voice interview websocket disconnected", ticket_code=ticket_code)
+        logger.info("Voice interview websocket disconnected", ticket_code=ticket_code, interview_id=str(interview["id"]) if interview else None)
+        
+        # Auto-complete interview if it has responses but wasn't completed
+        if interview and interview.get("status") in ["in_progress", "pending"]:
+            try:
+                # Check if interview has responses
+                responses_check = db.service_client.table("interview_responses").select("id").eq("interview_id", str(interview["id"])).limit(1).execute()
+                if responses_check.data and len(responses_check.data) > 0:
+                    # Build transcript from responses
+                    all_responses = db.service_client.table("interview_responses").select("question_id, response_text").eq("interview_id", str(interview["id"])).order("created_at").execute()
+                    
+                    transcript_parts = []
+                    for resp in (all_responses.data or []):
+                        response_text = resp.get("response_text") or ""
+                        if response_text:
+                            transcript_parts.append(response_text)
+                    
+                    transcript = "\n\n".join(transcript_parts) if transcript_parts else None
+                    
+                    logger.info("Auto-completing interview after disconnect", interview_id=str(interview["id"]), has_responses=True, transcript_length=len(transcript) if transcript else 0)
+                    
+                    # Complete the interview
+                    await InterviewService.complete_interview(
+                        UUID(interview["id"]),
+                        transcript=transcript
+                    )
+                    logger.info("Interview auto-completed after disconnect", interview_id=str(interview["id"]))
+            except Exception as e:
+                logger.error("Error auto-completing interview after disconnect", error=str(e), interview_id=str(interview["id"]) if interview else None, exc_info=True)
         return
     except Exception as e:
         logger.error("Voice interview websocket error", ticket_code=ticket_code, error=str(e))

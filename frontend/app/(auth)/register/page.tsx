@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import Link from 'next/link'
+import { Sparkles, CheckCircle2 } from 'lucide-react'
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -49,14 +50,35 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="absolute top-4 right-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-turquoise-50 via-white to-yellow-50 py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
+      {/* Decorative background elements */}
+      <div className="absolute top-0 left-0 w-72 h-72 bg-turquoise-200/30 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
+      <div className="absolute bottom-0 right-0 w-72 h-72 bg-yellow-200/30 rounded-full blur-3xl translate-x-1/2 translate-y-1/2"></div>
+      
+      <div className="absolute top-4 right-4 z-10">
         <ThemeToggle variant="icon" />
       </div>
-      <div className="max-w-md w-full">
+      
+      <div className="max-w-md w-full relative z-10">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">AI Voice Interview Platform</h1>
-          <p className="mt-2 text-gray-600 dark:text-gray-400">Create your recruiter account</p>
+          <Link href="/" className="inline-flex items-center gap-2 justify-center mb-6">
+            <div className="w-12 h-12 bg-gradient-to-br from-turquoise-500 to-turquoise-600 rounded-lg flex items-center justify-center shadow-lg">
+              <Sparkles className="w-7 h-7 text-white" />
+            </div>
+            <span className="text-2xl font-bold text-gray-900 dark:text-white">VeloxaRecruit</span>
+          </Link>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Get Started Free</h1>
+          <p className="text-gray-600 dark:text-gray-400">Create your account and start hiring smarter</p>
+          <div className="mt-4 flex items-center justify-center gap-4 text-xs text-gray-500">
+            <div className="flex items-center gap-1">
+              <CheckCircle2 className="w-4 h-4 text-turquoise-600" />
+              <span>14-day free trial</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <CheckCircle2 className="w-4 h-4 text-turquoise-600" />
+              <span>No credit card</span>
+            </div>
+          </div>
         </div>
 
         <Card>
@@ -109,7 +131,7 @@ export default function RegisterPage() {
               variant="primary"
               size="lg"
               loading={loading}
-              className="w-full"
+              className="w-full bg-turquoise-600 hover:bg-turquoise-700 text-white border-0 shadow-lg hover:shadow-xl transition-all"
             >
               Create Account
             </Button>
@@ -118,10 +140,15 @@ export default function RegisterPage() {
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Already have an account?{' '}
-              <Link href="/login" className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-medium">
+              <Link href="/login" className="text-turquoise-600 dark:text-turquoise-400 hover:text-turquoise-700 dark:hover:text-turquoise-300 font-medium underline">
                 Sign in
               </Link>
             </p>
+            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <Link href="/" className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+                ← Back to home
+              </Link>
+            </div>
           </div>
         </Card>
       </div>

@@ -35,6 +35,7 @@ class InterviewUpdate(BaseModel):
     duration_seconds: Optional[int] = None
     audio_file_path: Optional[str] = None
     transcript: Optional[str] = None
+    job_status: Optional[str] = None  # accepted, rejected, under_review, pending
 
 
 class Interview(InterviewBase):

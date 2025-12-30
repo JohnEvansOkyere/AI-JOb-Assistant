@@ -338,3 +338,45 @@ class InterviewService:
             logger.error("Error listing interviews with reports", error=str(e), recruiter_id=str(recruiter_id))
             raise
 
+    @staticmethod
+    async def update_interview(interview_id: UUID, update_data: dict) -> dict:
+        """
+        Update an interview with the provided data
+        
+        Args:
+            interview_id: Interview ID
+            update_data: Dictionary of fields to update (can be from InterviewUpdate model or plain dict)
+        
+        Returns:
+            Updated interview data
+        
+        Raises:
+            NotFoundError: If interview not found
+        """
+        try:
+            # Verify interview exists
+            interview = await InterviewService.get_interview(interview_id)
+            
+            # Convert Pydantic model to dict if needed
+            if hasattr(update_data, 'model_dump'):
+                update_dict = update_data.model_dump(exclude_unset=True)
+            elif hasattr(update_data, 'dict'):
+                update_dict = update_data.dict(exclude_unset=True)
+            else:
+                update_dict = update_data
+            
+            # Use service client to avoid RLS issues
+            response = db.service_client.table("interviews").update(update_dict).eq("id", str(interview_id)).execute()
+            
+            if not response.data:
+                raise NotFoundError("Interview", str(interview_id))
+            
+            logger.info("Interview updated", interview_id=str(interview_id), updated_fields=list(update_dict.keys()))
+            return response.data[0]
+            
+        except NotFoundError:
+            raise
+        except Exception as e:
+            logger.error("Error updating interview", error=str(e), interview_id=str(interview_id))
+            raise
+

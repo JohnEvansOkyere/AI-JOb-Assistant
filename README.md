@@ -17,9 +17,32 @@ AI-JOb-Assistant/
 ├── backend/              # FastAPI application
 ├── frontend/             # Next.js application
 ├── database/             # Supabase migrations and schema
-├── docs/                 # Documentation
+├── docs/                 # Documentation (organized by category)
+│   ├── voice-interview/  # Voice interview features
+│   ├── cv-screening/     # CV screening system
+│   ├── subscription-payment/ # Subscriptions & payments
+│   ├── email/            # Email system
+│   ├── admin/            # Admin dashboard
+│   ├── phases-implementation/ # Development phases
+│   ├── setup-config/     # Setup & configuration
+│   ├── architecture/     # System architecture
+│   ├── troubleshooting/   # Error solutions
+│   ├── testing/          # Testing guides
+│   └── business/         # Business docs
 └── scripts/              # Utility scripts
 ```
+
+## Documentation
+
+📚 **Comprehensive documentation is available in the [`docs/`](./docs/) directory.**
+
+- **[Documentation Index](./docs/README.md)** - Main documentation overview
+- **[Quick Reference](./docs/QUICK_REFERENCE.md)** - Common tasks and quick links
+- **[Architecture](./docs/architecture/ARCHITECTURE.md)** - System architecture
+- **[Setup Guide](./docs/setup-config/ENV_SETUP.md)** - Environment setup
+- **[Deployment Guide](./docs/setup-config/DEPLOYMENT.md)** - Deployment instructions
+
+All documentation is organized by category for easy navigation.
 
 ## Development Phases
 

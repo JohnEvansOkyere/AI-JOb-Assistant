@@ -12,7 +12,7 @@ from app.services.usage_limit_checker import UsageLimitChecker
 from app.config_plans import SubscriptionPlanService
 from app.utils.auth import get_current_user_id, get_current_user
 from app.database import db
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import structlog
 import json
 
@@ -163,21 +163,63 @@ async def verify_payment(
                 detail="Unauthorized: This payment does not belong to your account"
             )
         
-        # Update organization settings with plan and limits
-        if subscription_plan and company_name:
-            # Set trial end date (14 days from now)
+        # Idempotency check: Verify payment wasn't already processed
+        existing = (
+            db.service_client.table("organization_settings")
+            .select("last_payment_date, status")
+            .eq("company_name", company_name)
+            .execute()
+        )
+        
+        payment_already_processed = False
+        if existing.data:
+            last_payment = existing.data[0].get("last_payment_date")
+            if last_payment:
+                last_payment_dt = datetime.fromisoformat(last_payment.replace('Z', '+00:00'))
+                time_diff = datetime.utcnow().replace(tzinfo=timezone.utc) - last_payment_dt
+                if time_diff.total_seconds() < 300:  # 5 minutes
+                    payment_already_processed = True
+                    logger.info(
+                        "Payment already processed via webhook (idempotency)",
+                        company_name=company_name,
+                        reference=reference
+                    )
+        
+        # Update organization settings with plan and limits (if not already processed)
+        if subscription_plan and company_name and not payment_already_processed:
+            # Set trial end date (14 days from now) - only if starting new subscription
+            # If payment successful, activate subscription immediately
             trial_days = SubscriptionPlanService.get_plan_config(subscription_plan).get("trial_days", 14)
-            trial_ends_at = (datetime.utcnow() + timedelta(days=trial_days)).isoformat()
             
             # Assign plan limits
             await UsageLimitChecker.assign_plan_limits(company_name, subscription_plan)
             
-            # Update trial end date
-            db.service_client.table("organization_settings").update({
-                "trial_ends_at": trial_ends_at,
-                "status": "trial",
+            # Activate subscription (payment successful)
+            update_data = {
+                "status": "active",
+                "subscription_starts_at": datetime.utcnow().isoformat(),
+                "last_payment_date": datetime.utcnow().isoformat(),
+                "subscription_ends_at": (datetime.utcnow() + timedelta(days=30)).isoformat(),
+                "next_payment_date": (datetime.utcnow() + timedelta(days=30)).isoformat(),
                 "updated_at": datetime.utcnow().isoformat()
-            }).eq("company_name", company_name).execute()
+            }
+            
+            # Only set trial_ends_at if subscription hasn't started yet
+            existing_status = existing.data[0].get("status") if existing.data else None
+            if existing_status == "trial":
+                update_data["trial_ends_at"] = (datetime.utcnow() + timedelta(days=trial_days)).isoformat()
+            
+            db.service_client.table("organization_settings").update(update_data).eq(
+                "company_name", company_name
+            ).execute()
+            
+            logger.info(
+                "Payment verified and subscription activated",
+                company_name=company_name,
+                subscription_plan=subscription_plan,
+                reference=reference,
+                source="direct_api"
+            )
         
         return Response(
             success=True,

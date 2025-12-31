@@ -6,7 +6,7 @@ Supports both card and mobile money (MOMO) payments
 
 from typing import Dict, Any, Optional
 from uuid import UUID
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import requests
 import hmac
@@ -106,7 +106,7 @@ class PaymentService:
             "currency": "GHS",
             "reference": f"{company_name}_{subscription_plan}_{datetime.utcnow().timestamp()}",
             "metadata": payment_metadata,
-            "callback_url": f"{settings.frontend_url}/dashboard/subscription/callback",
+            "callback_url": f"{settings.frontend_url}/dashboard/subscription/callback?reference={payload['reference']}",
             "channels": ["card", "mobile_money"],  # Support both card and MOMO
         }
         
@@ -265,15 +265,41 @@ class PaymentService:
     
     @staticmethod
     async def _handle_payment_success(data: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle successful payment"""
+        """Handle successful payment (idempotent - safe to call multiple times)"""
         metadata = data.get("metadata", {})
         company_name = metadata.get("company_name")
         subscription_plan = metadata.get("subscription_plan")
+        reference = data.get("reference")
         amount = data.get("amount", 0) / 100  # Convert from kobo/pesewas
         
         if not company_name or not subscription_plan:
             logger.warning("Payment success missing metadata", data=data)
             return {"status": "skipped", "reason": "missing_metadata"}
+        
+        # Idempotency check: Check if this payment was already processed
+        try:
+            existing = (
+                db.service_client.table("organization_settings")
+                .select("last_payment_date, status")
+                .eq("company_name", company_name)
+                .execute()
+            )
+            
+            if existing.data:
+                last_payment = existing.data[0].get("last_payment_date")
+                # If payment was processed recently (within last 5 minutes), skip
+                if last_payment:
+                    last_payment_dt = datetime.fromisoformat(last_payment.replace('Z', '+00:00'))
+                    time_diff = datetime.utcnow().replace(tzinfo=timezone.utc) - last_payment_dt
+                    if time_diff.total_seconds() < 300:  # 5 minutes
+                        logger.info(
+                            "Payment already processed (idempotency)",
+                            company_name=company_name,
+                            reference=reference
+                        )
+                        return {"status": "already_processed", "company_name": company_name}
+        except Exception as e:
+            logger.warning("Idempotency check failed, proceeding anyway", error=str(e))
         
         # Update organization settings
         update_data = {
@@ -297,7 +323,9 @@ class PaymentService:
                 "Payment success processed",
                 company_name=company_name,
                 subscription_plan=subscription_plan,
-                amount=amount
+                amount=amount,
+                reference=reference,
+                source="webhook"
             )
             
             return {"status": "success", "company_name": company_name}

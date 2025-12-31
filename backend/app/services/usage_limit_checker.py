@@ -1,6 +1,7 @@
 """
 Usage Limit Checker Service
 Enforces usage limits for organizations (interview limits, cost limits, status checks)
+Automatically assigns limits based on subscription plan configuration
 """
 
 from typing import Dict, Any, Optional, Tuple
@@ -8,6 +9,7 @@ from uuid import UUID
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from app.database import db
+from app.config_plans import SubscriptionPlanService
 from app.utils.errors import AppException
 import structlog
 
@@ -79,7 +81,10 @@ class UsageLimitChecker:
             )
             
             if settings_response.data:
-                return settings_response.data[0]
+                settings = settings_response.data[0]
+                # Auto-assign limits from plan config if not set
+                settings = await UsageLimitChecker._ensure_limits_from_plan(settings)
+                return settings
             
             # No settings found - default to unlimited
             return None
@@ -526,3 +531,160 @@ class UsageLimitChecker:
             )
         }
 
+
+    @staticmethod
+    async def _ensure_limits_from_plan(settings: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Ensure limits are set from plan configuration if not already set.
+        This automatically syncs limits when subscription_plan is set but limits aren't.
+        
+        Args:
+            settings: Organization settings dict
+        
+        Returns:
+            Updated settings dict
+        """
+        subscription_plan = settings.get("subscription_plan")
+        if not subscription_plan:
+            return settings
+        
+        # Get plan configuration
+        plan_config = SubscriptionPlanService.get_plan_config(subscription_plan)
+        if not plan_config:
+            return settings
+        
+        plan_limits = plan_config.get("limits", {})
+        needs_update = False
+        update_data = {}
+        
+        # Check and set monthly_interview_limit
+        if settings.get("monthly_interview_limit") is None:
+            limit = plan_limits.get("monthly_interview_limit")
+            if limit is not None:
+                update_data["monthly_interview_limit"] = limit
+                needs_update = True
+                settings["monthly_interview_limit"] = limit
+        
+        # Check and set monthly_cost_limit_usd
+        if settings.get("monthly_cost_limit_usd") is None:
+            limit = plan_limits.get("monthly_cost_limit_usd")
+            if limit is not None:
+                # Convert Decimal to float for database
+                update_data["monthly_cost_limit_usd"] = float(limit)
+                needs_update = True
+                settings["monthly_cost_limit_usd"] = float(limit)
+        
+        # Check and set daily_cost_limit_usd
+        if settings.get("daily_cost_limit_usd") is None:
+            limit = plan_limits.get("daily_cost_limit_usd")
+            if limit is not None:
+                # Convert Decimal to float for database
+                update_data["daily_cost_limit_usd"] = float(limit)
+                needs_update = True
+                settings["daily_cost_limit_usd"] = float(limit)
+        
+        # Update database if needed
+        if needs_update and update_data:
+            try:
+                company_name = settings.get("company_name")
+                update_data["updated_at"] = datetime.utcnow().isoformat()
+                
+                db.service_client.table("organization_settings").update(update_data).eq(
+                    "company_name", company_name
+                ).execute()
+                
+                logger.info(
+                    "Auto-assigned limits from plan",
+                    company_name=company_name,
+                    subscription_plan=subscription_plan,
+                    limits=update_data
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to auto-assign limits from plan",
+                    error=str(e),
+                    company_name=settings.get("company_name")
+                )
+        
+        return settings
+    
+    @staticmethod
+    async def assign_plan_limits(company_name: str, subscription_plan: str) -> Dict[str, Any]:
+        """
+        Assign limits from plan configuration to an organization.
+        This should be called when a subscription plan is set or changed.
+        
+        Args:
+            company_name: Organization company name
+            subscription_plan: Plan identifier
+        
+        Returns:
+            Updated settings dict
+        """
+        plan_config = SubscriptionPlanService.get_plan_config(subscription_plan)
+        if not plan_config:
+            logger.warning("Plan config not found", plan=subscription_plan)
+            return {}
+        
+        plan_limits = plan_config.get("limits", {})
+        update_data = {
+            "subscription_plan": subscription_plan,
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        
+        # Set limits from plan (override existing if plan is changed)
+        if "monthly_interview_limit" in plan_limits:
+            update_data["monthly_interview_limit"] = plan_limits["monthly_interview_limit"]
+        
+        if "monthly_cost_limit_usd" in plan_limits:
+            limit = plan_limits["monthly_cost_limit_usd"]
+            update_data["monthly_cost_limit_usd"] = float(limit) if limit is not None else None
+        
+        if "daily_cost_limit_usd" in plan_limits:
+            limit = plan_limits["daily_cost_limit_usd"]
+            update_data["daily_cost_limit_usd"] = float(limit) if limit is not None else None
+        
+        try:
+            # Update or insert settings
+            response = (
+                db.service_client.table("organization_settings")
+                .select("id")
+                .eq("company_name", company_name)
+                .execute()
+            )
+            
+            if response.data:
+                # Update existing
+                result = (
+                    db.service_client.table("organization_settings")
+                    .update(update_data)
+                    .eq("company_name", company_name)
+                    .execute()
+                )
+            else:
+                # Insert new
+                update_data["company_name"] = company_name
+                update_data["status"] = "trial"  # New subscriptions start as trial
+                result = (
+                    db.service_client.table("organization_settings")
+                    .insert(update_data)
+                    .execute()
+                )
+            
+            logger.info(
+                "Assigned plan limits",
+                company_name=company_name,
+                subscription_plan=subscription_plan,
+                limits=update_data
+            )
+            
+            return result.data[0] if result.data else {}
+            
+        except Exception as e:
+            logger.error(
+                "Failed to assign plan limits",
+                error=str(e),
+                company_name=company_name,
+                subscription_plan=subscription_plan
+            )
+            raise

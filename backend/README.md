@@ -55,3 +55,5 @@ uvicorn app.main:app --reload
 
 - [CORS Troubleshooting Guide](./docs/CORS_TROUBLESHOOTING.md) - Detailed guide for CORS errors and solutions
 - [CORS Configuration Checklist](./docs/CORS_CHECKLIST.md) - Checklist to prevent CORS issues
+
+For more documentation, see the main [docs](../docs/) directory.

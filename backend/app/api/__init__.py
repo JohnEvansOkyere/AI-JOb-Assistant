@@ -24,6 +24,7 @@ from .branding import router as branding_router
 from .calendar import router as calendar_router
 from .interview_stages import router as interview_stages_router
 from .admin import router as admin_router
+from .subscriptions import router as subscriptions_router
 
 __all__ = [
     "auth_router",
@@ -47,4 +48,5 @@ __all__ = [
     "calendar_router",
     "interview_stages_router",
     "admin_router",
+    "subscriptions_router",
 ]

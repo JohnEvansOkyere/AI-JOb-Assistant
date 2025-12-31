@@ -10,6 +10,10 @@ from app.schemas.common import Response
 from app.utils.admin_auth import get_current_admin, require_admin
 from app.services.admin_service import AdminService
 from app.services import admin_service_extensions
+from app.config_plans import SubscriptionPlanService
+from app.services.usage_limit_checker import UsageLimitChecker
+from app.database import db
+from decimal import Decimal
 import structlog
 
 logger = structlog.get_logger()
@@ -636,5 +640,190 @@ async def get_admin_logs(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch admin logs: {str(e)}"
+        )
+
+
+@router.get("/subscriptions", response_model=Response[list])
+async def list_subscriptions(
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    subscription_plan: Optional[str] = Query(None, regex="^(free|starter|professional|enterprise|custom)$"),
+    status: Optional[str] = Query(None, regex="^(active|trial|paused|suspended)$"),
+    search: Optional[str] = Query(None),
+    admin_user: dict = Depends(get_current_admin)
+):
+    """
+    List all subscriptions with details
+    
+    Args:
+        limit: Maximum number of subscriptions to return
+        offset: Offset for pagination
+        subscription_plan: Filter by plan
+        status: Filter by status
+        search: Search by organization name
+        admin_user: Current admin user
+    
+    Returns:
+        List of subscription details
+    """
+    try:
+        # Build query
+        query = db.service_client.table("organization_settings").select("*")
+        
+        if subscription_plan:
+            query = query.eq("subscription_plan", subscription_plan)
+        if status:
+            query = query.eq("status", status)
+        if search:
+            query = query.ilike("company_name", f"%{search}%")
+        
+        # Get total count
+        count_query = query.select("id", count="exact")
+        total_response = count_query.execute()
+        total_count = total_response.count if hasattr(total_response, 'count') else len(total_response.data or [])
+        
+        # Get paginated results
+        response = query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
+        subscriptions = response.data or []
+        
+        # Enrich with usage data
+        enriched_subscriptions = []
+        for sub in subscriptions:
+            company_name = sub.get("company_name")
+            
+            # Get usage summary
+            users_response = (
+                db.service_client.table("users")
+                .select("id")
+                .eq("company_name", company_name)
+                .limit(1)
+                .execute()
+            )
+            
+            usage_summary = {}
+            if users_response.data:
+                recruiter_id = users_response.data[0]["id"]
+                try:
+                    usage_summary = await UsageLimitChecker.get_usage_summary(recruiter_id)
+                except:
+                    pass
+            
+            # Calculate monthly revenue
+            plan_config = SubscriptionPlanService.get_plan_config(sub.get("subscription_plan", "free"))
+            monthly_revenue = plan_config.get("price_monthly_usd", 0) if plan_config else 0
+            
+            enriched_subscriptions.append({
+                "company_name": company_name,
+                "subscription_plan": sub.get("subscription_plan", "free"),
+                "status": sub.get("status", "active"),
+                "trial_ends_at": sub.get("trial_ends_at"),
+                "subscription_starts_at": sub.get("subscription_starts_at"),
+                "subscription_ends_at": sub.get("subscription_ends_at"),
+                "last_payment_date": sub.get("last_payment_date"),
+                "next_payment_date": sub.get("next_payment_date"),
+                "monthly_revenue_usd": monthly_revenue,
+                "monthly_interview_limit": sub.get("monthly_interview_limit"),
+                "monthly_cost_limit_usd": float(sub.get("monthly_cost_limit_usd")) if sub.get("monthly_cost_limit_usd") else None,
+                "daily_cost_limit_usd": float(sub.get("daily_cost_limit_usd")) if sub.get("daily_cost_limit_usd") else None,
+                "billing_email": sub.get("billing_email"),
+                **usage_summary  # Add usage stats
+            })
+        
+        return Response(
+            success=True,
+            message=f"Found {len(enriched_subscriptions)} subscriptions",
+            data={
+                "subscriptions": enriched_subscriptions,
+                "total": total_count,
+                "limit": limit,
+                "offset": offset
+            }
+        )
+        
+    except Exception as e:
+        logger.error("Error listing subscriptions", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list subscriptions: {str(e)}"
+        )
+
+
+@router.get("/subscriptions/stats", response_model=Response[dict])
+async def get_subscription_stats(
+    admin_user: dict = Depends(get_current_admin)
+):
+    """
+    Get subscription statistics
+    
+    Args:
+        admin_user: Current admin user
+    
+    Returns:
+        Subscription statistics (MRR, total revenue, conversions, etc.)
+    """
+    try:
+        # Get all subscriptions
+        response = (
+            db.service_client.table("organization_settings")
+            .select("*")
+            .execute()
+        )
+        
+        subscriptions = response.data or []
+        
+        # Calculate stats
+        total_subscriptions = len(subscriptions)
+        active_subscriptions = sum(1 for s in subscriptions if s.get("status") == "active")
+        trial_subscriptions = sum(1 for s in subscriptions if s.get("status") == "trial")
+        paused_subscriptions = sum(1 for s in subscriptions if s.get("status") == "paused")
+        suspended_subscriptions = sum(1 for s in subscriptions if s.get("status") == "suspended")
+        
+        # Calculate MRR (Monthly Recurring Revenue)
+        mrr = Decimal('0')
+        total_revenue = Decimal('0')
+        plan_distribution = {}
+        
+        for sub in subscriptions:
+            plan = sub.get("subscription_plan", "free")
+            plan_config = SubscriptionPlanService.get_plan_config(plan)
+            
+            if plan_config:
+                price_usd = plan_config.get("price_monthly_usd", 0)
+                if price_usd:
+                    price_decimal = Decimal(str(price_usd))
+                    
+                    if sub.get("status") == "active":
+                        mrr += price_decimal
+                    
+                    total_revenue += price_decimal
+            
+            plan_distribution[plan] = plan_distribution.get(plan, 0) + 1
+        
+        # Calculate trial conversion rate (if we have historical data)
+        # For now, just return current stats
+        
+        stats = {
+            "total_subscriptions": total_subscriptions,
+            "active_subscriptions": active_subscriptions,
+            "trial_subscriptions": trial_subscriptions,
+            "paused_subscriptions": paused_subscriptions,
+            "suspended_subscriptions": suspended_subscriptions,
+            "monthly_recurring_revenue_usd": float(mrr),
+            "estimated_total_revenue_usd": float(total_revenue),
+            "plan_distribution": plan_distribution,
+            "trial_conversion_rate": (active_subscriptions / trial_subscriptions * 100) if trial_subscriptions > 0 else 0,
+        }
+        
+        return Response(
+            success=True,
+            message="Subscription statistics retrieved successfully",
+            data=stats
+        )
+        
+    except Exception as e:
+        logger.error("Error getting subscription stats", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get subscription stats: {str(e)}"
         )
 

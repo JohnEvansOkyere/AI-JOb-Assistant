@@ -10,7 +10,9 @@ from app.models.user import User
 from app.database import db
 from app.utils.auth import create_access_token, get_current_user
 from app.utils.rate_limit import rate_limit_auth
-from datetime import timedelta
+from app.services.usage_limit_checker import UsageLimitChecker
+from app.config_plans import SubscriptionPlanService
+from datetime import timedelta, datetime
 import structlog
 
 logger = structlog.get_logger()
@@ -65,11 +67,55 @@ async def register(request: Request, user_data: UserRegister):
         
         logger.info("User registered", user_id=user_id, email=user_data.email)
         
+        # Create subscription settings if company_name is provided
+        subscription_plan = user_data.subscription_plan or "free"
+        
+        # Validate plan
+        plan_config = SubscriptionPlanService.get_plan_config(subscription_plan)
+        if not plan_config:
+            # Invalid plan - default to free
+            subscription_plan = "free"
+            plan_config = SubscriptionPlanService.get_plan_config("free")
+        
+        if user_data.company_name:
+            try:
+                # Set trial end date (14 days from now by default)
+                trial_days = plan_config.get("trial_days", 14)
+                trial_ends_at = (datetime.utcnow() + timedelta(days=trial_days)).isoformat()
+                
+                # Assign plan limits and create organization settings
+                await UsageLimitChecker.assign_plan_limits(user_data.company_name, subscription_plan)
+                
+                # Update trial end date
+                db.service_client.table("organization_settings").update({
+                    "trial_ends_at": trial_ends_at,
+                    "status": "trial",
+                    "updated_at": datetime.utcnow().isoformat()
+                }).eq("company_name", user_data.company_name).execute()
+                
+                logger.info(
+                    "Subscription created for new user",
+                    user_id=user_id,
+                    company_name=user_data.company_name,
+                    subscription_plan=subscription_plan,
+                    trial_ends_at=trial_ends_at
+                )
+            except Exception as e:
+                # Log error but don't fail registration
+                logger.warning(
+                    "Failed to create subscription settings during registration",
+                    error=str(e),
+                    user_id=user_id,
+                    company_name=user_data.company_name
+                )
+        
         # Default templates will be created lazily when user first accesses templates
         # This ensures registration is fast and templates are created when needed
         
         # Return success - Supabase handles email confirmation automatically
         message = "User registered successfully. Please check your email to confirm your account."
+        if subscription_plan != "free":
+            message += f" Your {subscription_plan} plan trial has started."
         
         return Response(
             success=True,

@@ -24,7 +24,8 @@ import {
   CheckCircle,
   Briefcase,
   BarChart3,
-  ArrowRight
+  ArrowRight,
+  CreditCard
 } from 'lucide-react'
 import { LineChart, BarChart } from '@/components/ui/SimpleChart'
 
@@ -433,6 +434,14 @@ export default function AdminDashboardPage() {
             >
               <Activity className="w-5 h-5 mr-2" />
               System Health
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => router.push('/dashboard/admin/subscriptions')}
+              className="justify-start"
+            >
+              <CreditCard className="w-5 h-5 mr-2" />
+              Subscriptions
             </Button>
           </div>
         </Card>

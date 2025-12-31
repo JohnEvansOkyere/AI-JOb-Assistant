@@ -33,7 +33,9 @@ from app.api import (
     calendar_router,
     interview_stages_router,
     admin_router,
+    subscriptions_router,
 )
+from app.api.subscriptions import router as subscriptions_router
 from app.utils.errors import (
     app_exception_handler,
     validation_exception_handler,
@@ -300,6 +302,7 @@ app.include_router(branding_router)
 app.include_router(calendar_router)
 app.include_router(interview_stages_router)
 app.include_router(admin_router)  # Admin dashboard (admin-only)
+app.include_router(subscriptions_router)  # Subscription management
 
 if __name__ == "__main__":
     import uvicorn

@@ -29,4 +29,5 @@ class UserRegister(BaseModel):
     password: str
     full_name: str | None = None
     company_name: str | None = None
+    subscription_plan: str | None = "free"  # Optional: starter, professional, enterprise (defaults to free)
 

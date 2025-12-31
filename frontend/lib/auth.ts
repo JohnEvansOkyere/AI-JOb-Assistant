@@ -24,6 +24,7 @@ export interface RegisterData {
   password: string
   full_name?: string
   company_name?: string
+  subscription_plan?: string
 }
 
 export async function login(credentials: LoginCredentials) {

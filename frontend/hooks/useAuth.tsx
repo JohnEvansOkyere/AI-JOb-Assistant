@@ -14,7 +14,7 @@ interface AuthContextType {
   loading: boolean
   isAuthenticated: boolean
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
-  register: (data: { email: string; password: string; full_name?: string; company_name?: string }) => Promise<{ success: boolean; error?: string }>
+  register: (data: { email: string; password: string; full_name?: string; company_name?: string; subscription_plan?: string }) => Promise<{ success: boolean; error?: string }>
   logout: () => Promise<void>
   refreshUser: () => Promise<void>
 }
@@ -57,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return result
   }
 
-  const handleRegister = async (data: { email: string; password: string; full_name?: string; company_name?: string }) => {
+  const handleRegister = async (data: { email: string; password: string; full_name?: string; company_name?: string; subscription_plan?: string }) => {
     const result = await register(data)
     if (result.success) {
       await loadUser()

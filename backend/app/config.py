@@ -176,6 +176,17 @@ class Settings(BaseSettings):
     sentry_environment: Optional[str] = None  # production, staging, development (defaults to app_env)
     sentry_traces_sample_rate: float = 1.0  # 0.0 to 1.0 (1.0 = 100% of transactions, lower for high traffic)
     sentry_profiles_sample_rate: float = 1.0  # Performance profiling sample rate
+    
+    # Paystack Payment Configuration
+    paystack_secret_key: Optional[str] = None
+    paystack_public_key: Optional[str] = None
+    paystack_test_secret_key: Optional[str] = None
+    paystack_test_public_key: Optional[str] = None
+    paystack_webhook_secret: Optional[str] = None
+    paystack_mode: str = "test"  # "test" or "live"
+    
+    # Frontend URL (for payment callbacks)
+    frontend_url: str = "http://localhost:3000"
 
 
 # Global settings instance

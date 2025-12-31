@@ -634,7 +634,7 @@ export default function LandingPage() {
                 </li>
               </ul>
               <Link 
-                href="/register"
+                href="/register?plan=starter"
                 className="block w-full bg-turquoise-600 text-white text-center px-6 py-3 rounded-lg font-semibold hover:bg-turquoise-700 transition-colors"
               >
                 Start Free Trial
@@ -689,7 +689,7 @@ export default function LandingPage() {
                 </li>
               </ul>
               <Link 
-                href="/register"
+                href="/register?plan=professional"
                 className="block w-full bg-turquoise-600 text-white text-center px-6 py-3 rounded-lg font-semibold hover:bg-turquoise-700 transition-colors"
               >
                 Start Free Trial

@@ -8,8 +8,8 @@
 // Disable static prerendering to avoid SSR issues with theme
 export const dynamic = 'force-dynamic'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -20,15 +20,30 @@ import { Sparkles, CheckCircle2 } from 'lucide-react'
 
 export default function RegisterPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { register } = useAuth()
+  
+  // Get plan from query params
+  const planParam = searchParams.get('plan') || 'free'
+  const validPlans = ['free', 'starter', 'professional', 'enterprise']
+  const selectedPlan = validPlans.includes(planParam) ? planParam : 'free'
+  
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     full_name: '',
     company_name: '',
+    subscription_plan: selectedPlan,
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  
+  // Update plan when query param changes
+  useEffect(() => {
+    if (validPlans.includes(planParam)) {
+      setFormData(prev => ({ ...prev, subscription_plan: planParam }))
+    }
+  }, [planParam])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -69,6 +84,11 @@ export default function RegisterPage() {
           </Link>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Get Started Free</h1>
           <p className="text-gray-600 dark:text-gray-400">Create your account and start hiring smarter</p>
+          {selectedPlan !== 'free' && (
+            <div className="mt-3 inline-block px-4 py-2 bg-turquoise-100 dark:bg-turquoise-900/30 text-turquoise-700 dark:text-turquoise-300 rounded-full text-sm font-medium">
+              {selectedPlan.charAt(0).toUpperCase() + selectedPlan.slice(1)} Plan Selected
+            </div>
+          )}
           <div className="mt-4 flex items-center justify-center gap-4 text-xs text-gray-500">
             <div className="flex items-center gap-1">
               <CheckCircle2 className="w-4 h-4 text-turquoise-600" />

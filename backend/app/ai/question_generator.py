@@ -344,7 +344,11 @@ class QuestionGenerator:
         previous_question_text: str,
         previous_response_text: str,
         response_quality: str,
-        non_answer_type: Optional[str] = None
+        non_answer_type: Optional[str] = None,
+        recruiter_id: Optional[UUID] = None,
+        interview_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None
     ) -> str:
         """
         Generate skill question that acknowledges the candidate's previous response
@@ -358,6 +362,10 @@ class QuestionGenerator:
             previous_response_text: The candidate's response to the previous question
             response_quality: Quality of previous response
             non_answer_type: Type of non-answer if detected ("not_ready", "confused", "decline", "need_help")
+            recruiter_id: Optional recruiter ID for logging
+            interview_id: Optional interview ID for logging
+            job_description_id: Optional job description ID for logging
+            candidate_id: Optional candidate ID for logging
         
         Returns:
             Generated question text with acknowledgment
@@ -373,12 +381,29 @@ class QuestionGenerator:
                 response_quality,
                 non_answer_type
             )
-            question = await self.provider.generate_completion(
-                prompt=prompt,
-                system_prompt=self.prompts.SYSTEM_PROMPT,
-                max_tokens=300,
-                temperature=0.8  # Higher temperature for more natural conversation
+            provider, context = self._get_provider_for_call(
+                recruiter_id=recruiter_id,
+                interview_id=interview_id,
+                job_description_id=job_description_id,
+                candidate_id=candidate_id,
+                feature_name="question_generation"
             )
+            
+            if isinstance(provider, LoggedAIProvider):
+                question = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt=self.prompts.SYSTEM_PROMPT,
+                    max_tokens=300,
+                    temperature=0.8,  # Higher temperature for more natural conversation
+                    **context
+                )
+            else:
+                question = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt=self.prompts.SYSTEM_PROMPT,
+                    max_tokens=300,
+                    temperature=0.8  # Higher temperature for more natural conversation
+                )
             return question.strip()
         except Exception as e:
             logger.error("Error generating skill question with acknowledgment", error=str(e))
@@ -393,7 +418,11 @@ class QuestionGenerator:
         previous_question_text: str,
         previous_response_text: str,
         response_quality: str,
-        non_answer_type: Optional[str] = None
+        non_answer_type: Optional[str] = None,
+        recruiter_id: Optional[UUID] = None,
+        interview_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None
     ) -> str:
         """
         Generate experience question that acknowledges the candidate's previous response
@@ -406,6 +435,10 @@ class QuestionGenerator:
             previous_response_text: The candidate's response to the previous question
             response_quality: Quality of previous response
             non_answer_type: Type of non-answer if detected ("not_ready", "confused", "decline", "need_help")
+            recruiter_id: Optional recruiter ID for logging
+            interview_id: Optional interview ID for logging
+            job_description_id: Optional job description ID for logging
+            candidate_id: Optional candidate ID for logging
         
         Returns:
             Generated question text with acknowledgment
@@ -420,12 +453,29 @@ class QuestionGenerator:
                 response_quality,
                 non_answer_type
             )
-            question = await self.provider.generate_completion(
-                prompt=prompt,
-                system_prompt=self.prompts.SYSTEM_PROMPT,
-                max_tokens=300,
-                temperature=0.8
+            provider, context = self._get_provider_for_call(
+                recruiter_id=recruiter_id,
+                interview_id=interview_id,
+                job_description_id=job_description_id,
+                candidate_id=candidate_id,
+                feature_name="question_generation"
             )
+            
+            if isinstance(provider, LoggedAIProvider):
+                question = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt=self.prompts.SYSTEM_PROMPT,
+                    max_tokens=300,
+                    temperature=0.8,
+                    **context
+                )
+            else:
+                question = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt=self.prompts.SYSTEM_PROMPT,
+                    max_tokens=300,
+                    temperature=0.8
+                )
             return question.strip()
         except Exception as e:
             logger.error("Error generating experience question with acknowledgment", error=str(e))
@@ -440,7 +490,11 @@ class QuestionGenerator:
         previous_response_quality: str,
         previous_questions: Optional[List[str]],
         previous_question_text: str,
-        previous_response_text: str
+        previous_response_text: str,
+        recruiter_id: Optional[UUID] = None,
+        interview_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None
     ) -> str:
         """
         Generate adaptive question that acknowledges the candidate's previous response
@@ -453,6 +507,10 @@ class QuestionGenerator:
             previous_questions: List of previously asked questions
             previous_question_text: The previous question that was asked
             previous_response_text: The candidate's response to the previous question
+            recruiter_id: Optional recruiter ID for logging
+            interview_id: Optional interview ID for logging
+            job_description_id: Optional job description ID for logging
+            candidate_id: Optional candidate ID for logging
         
         Returns:
             Generated question text with acknowledgment
@@ -467,12 +525,29 @@ class QuestionGenerator:
                 previous_question_text,
                 previous_response_text
             )
-            question = await self.provider.generate_completion(
-                prompt=prompt,
-                system_prompt=self.prompts.SYSTEM_PROMPT,
-                max_tokens=300,
-                temperature=0.8
+            provider, context = self._get_provider_for_call(
+                recruiter_id=recruiter_id,
+                interview_id=interview_id,
+                job_description_id=job_description_id,
+                candidate_id=candidate_id,
+                feature_name="question_generation"
             )
+            
+            if isinstance(provider, LoggedAIProvider):
+                question = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt=self.prompts.SYSTEM_PROMPT,
+                    max_tokens=300,
+                    temperature=0.8,
+                    **context
+                )
+            else:
+                question = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt=self.prompts.SYSTEM_PROMPT,
+                    max_tokens=300,
+                    temperature=0.8
+                )
             return question.strip()
         except Exception as e:
             logger.error("Error generating adaptive question with acknowledgment", error=str(e))

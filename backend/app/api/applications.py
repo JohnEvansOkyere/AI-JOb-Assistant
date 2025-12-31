@@ -13,6 +13,7 @@ from app.services.application_form_service import ApplicationFormService
 from app.services.cv_screening_service import CVScreeningService
 from app.services.cv_parser import CVParser
 from app.services.email_service import EmailService
+from app.services.usage_limit_checker import UsageLimitChecker
 from app.models.application_form import ApplicationFormResponseCreate
 from app.utils.auth import get_current_user_id
 from app.utils.rate_limit import rate_limit_public
@@ -1011,6 +1012,26 @@ async def screen_application(
         
         cv_text = cv.data[0]["parsed_text"]
         job_description = job.data[0]
+        
+        # Check usage limits before AI operation (CV screening uses AI)
+        from decimal import Decimal
+        # Estimate cost for CV screening (~$0.001-0.005 per screening)
+        estimated_cost = Decimal('0.002')
+        
+        try:
+            await UsageLimitChecker.check_all_limits(
+                recruiter_id=recruiter_id,
+                check_interview_limit=False,
+                check_cost_limit=True,
+                estimated_cost=estimated_cost
+            )
+        except Exception as e:
+            if hasattr(e, 'limit_type'):
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=str(e)
+                )
+            raise
         
         # Screen
         screening_service = CVScreeningService()

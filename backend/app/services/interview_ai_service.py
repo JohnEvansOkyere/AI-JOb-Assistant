@@ -234,10 +234,6 @@ class InterviewAIService:
             all_questions = db.service_client.table("interview_questions").select("question_text").eq("interview_id", str(interview_id)).execute()
             previous_questions = [q["question_text"] for q in (all_questions.data or [])]
             
-            # Note: The "with_acknowledgment" methods don't have context params yet
-            # They'll use regular provider for now (backwards compatible)
-            # TODO: Add context params to these methods
-            
             # Generate adaptive question with acknowledgment
             if response_quality == "weak" and skill_category:
                 question_text = await self.question_generator.generate_adaptive_question_with_acknowledgment(
@@ -247,7 +243,11 @@ class InterviewAIService:
                     "weak",
                     previous_questions,
                     previous_question_text,
-                    previous_response_text
+                    previous_response_text,
+                    recruiter_id=context.get("recruiter_id"),
+                    interview_id=interview_id,
+                    job_description_id=context.get("job_description_id"),
+                    candidate_id=context.get("candidate_id")
                 )
             else:
                 # Generate next skill or experience question with acknowledgment
@@ -260,7 +260,11 @@ class InterviewAIService:
                         previous_question_text,
                         previous_response_text,
                         response_quality,
-                        non_answer_type
+                        non_answer_type,
+                        recruiter_id=context.get("recruiter_id"),
+                        interview_id=interview_id,
+                        job_description_id=context.get("job_description_id"),
+                        candidate_id=context.get("candidate_id")
                     )
                 else:
                     question_text = await self.question_generator.generate_experience_question_with_acknowledgment(
@@ -270,7 +274,11 @@ class InterviewAIService:
                         previous_question_text,
                         previous_response_text,
                         response_quality,
-                        non_answer_type
+                        non_answer_type,
+                        recruiter_id=context.get("recruiter_id"),
+                        interview_id=interview_id,
+                        job_description_id=context.get("job_description_id"),
+                        candidate_id=context.get("candidate_id")
                     )
             
             # Get next order index

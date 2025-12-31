@@ -5,7 +5,8 @@
 
 import { ApiErrorHandler } from './error-handler'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+// Default to 127.0.0.1 to avoid IPv6 resolution issues in browsers
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'
 // Increase default timeout to better support long-running operations like CV screening
 const DEFAULT_TIMEOUT = 60000 // 60 seconds
 // Slightly reduce retries so we don't wait excessively long on repeated timeouts
@@ -82,10 +83,26 @@ export class ApiClient {
       // Create timeout promise
       const timeoutPromise = this.createTimeoutPromise(this.timeout)
 
-      // Create fetch promise
+      // Create fetch promise with credentials
+      // credentials: 'include' is required when backend has allow_credentials=True
       const fetchPromise = fetch(url, {
         ...options,
         headers,
+        credentials: 'include',
+      }).catch((fetchError) => {
+        // Wrap fetch errors to provide more context
+        console.error('Fetch error:', {
+          url,
+          error: fetchError,
+          message: fetchError?.message,
+          name: fetchError?.name,
+        })
+        // Re-throw with more context
+        const enhancedError = new Error(
+          `Failed to fetch ${url}: ${fetchError?.message || 'Unknown error'}`
+        )
+        enhancedError.name = fetchError?.name || 'FetchError'
+        throw enhancedError
       })
 
       // Race between fetch and timeout
@@ -141,7 +158,18 @@ export class ApiClient {
 
       // Handle network errors
       if (error?.message?.includes('Failed to fetch') || 
-          error?.message?.includes('NetworkError')) {
+          error?.message?.includes('NetworkError') ||
+          (error?.name === 'TypeError' && error?.message?.includes('fetch'))) {
+        
+        // Log detailed error for debugging
+        console.error('Network error details:', {
+          url,
+          endpoint,
+          attempt,
+          errorMessage: error?.message,
+          errorName: error?.name,
+        })
+        
         if (attempt < this.maxRetries) {
           const delay = ApiErrorHandler.getRetryDelay(attempt, this.retryDelay)
           console.log(`Network error, retrying in ${delay}ms (attempt ${attempt + 1}/${this.maxRetries})...`)
@@ -149,7 +177,12 @@ export class ApiClient {
           await new Promise(resolve => setTimeout(resolve, delay))
           return this.requestWithRetry<T>(endpoint, options, attempt + 1)
         }
-        throw new Error('Network error. Please check your internet connection and try again.')
+        
+        // Provide more helpful error message with troubleshooting info
+        const errorMsg = `Network error: Unable to connect to ${url}. ` +
+          `This might be a CORS issue or the server might be unreachable. ` +
+          `Please check your internet connection and ensure the backend server is running.`
+        throw new Error(errorMsg)
       }
 
       // Re-throw if it's already an API error

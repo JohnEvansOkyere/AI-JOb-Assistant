@@ -8,9 +8,11 @@ from uuid import UUID
 from decimal import Decimal
 from datetime import datetime
 from app.ai.providers import AIProviderFactory
+from app.ai.providers_wrapper import LoggedAIProvider
 from app.ai.prompts import InterviewPrompts
 from app.database import db
 from app.models.cv_screening import CVScreeningResult, CVScreeningResultCreate
+from app.config import settings
 import structlog
 import json
 
@@ -23,13 +25,38 @@ class CVScreeningService:
     def __init__(self, provider_name: Optional[str] = None):
         """Initialize screening service"""
         self.provider = AIProviderFactory.create_provider(provider_name)
+        self.provider_name = provider_name or settings.primary_ai_provider
         self.prompts = InterviewPrompts()
+    
+    def _get_provider_for_call(
+        self,
+        recruiter_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None,
+        feature_name: str = "cv_screening"
+    ):
+        """Get provider (logged or regular) based on context"""
+        if recruiter_id or job_description_id:
+            # Use logged provider with context
+            return LoggedAIProvider(self.provider, self.provider_name), {
+                "recruiter_id": recruiter_id,
+                "interview_id": None,
+                "job_description_id": job_description_id,
+                "candidate_id": candidate_id,
+                "feature_name": feature_name
+            }
+        else:
+            # Use regular provider (backwards compatible)
+            return self.provider, {}
     
     async def screen_cv(
         self,
         cv_text: str,
         job_description: Dict[str, Any],
-        cv_structured: Optional[Dict[str, Any]] = None
+        cv_structured: Optional[Dict[str, Any]] = None,
+        recruiter_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None
     ) -> Dict[str, Any]:
         """
         Screen a CV against a job description
@@ -38,6 +65,9 @@ class CVScreeningService:
             cv_text: CV text content
             job_description: Job description data
             cv_structured: Optional structured CV data
+            recruiter_id: Optional recruiter ID for cost tracking
+            job_description_id: Optional job description ID for cost tracking
+            candidate_id: Optional candidate ID for cost tracking
         
         Returns:
             Screening result dictionary
@@ -46,13 +76,30 @@ class CVScreeningService:
             # Generate screening prompt
             prompt = self._generate_screening_prompt(cv_text, job_description)
             
-            # Get AI analysis
-            analysis_text = await self.provider.generate_completion(
-                prompt=prompt,
-                system_prompt=self.prompts.SYSTEM_PROMPT,
-                max_tokens=1000,
-                temperature=0.5
+            # Get provider with cost tracking if context available
+            provider, context = self._get_provider_for_call(
+                recruiter_id=recruiter_id,
+                job_description_id=job_description_id,
+                candidate_id=candidate_id,
+                feature_name="cv_screening"
             )
+            
+            # Get AI analysis
+            if isinstance(provider, LoggedAIProvider):
+                analysis_text = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt=self.prompts.SYSTEM_PROMPT,
+                    max_tokens=1000,
+                    temperature=0.5,
+                    **context
+                )
+            else:
+                analysis_text = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt=self.prompts.SYSTEM_PROMPT,
+                    max_tokens=1000,
+                    temperature=0.5
+                )
             
             # Parse and structure results
             result = self._parse_screening_result(analysis_text, cv_text, job_description)
@@ -247,11 +294,21 @@ Focus on:
             Screening result
         """
         try:
+            # Get context for cost tracking
+            from app.services.ai_usage_context import get_application_context
+            context = await get_application_context(application_id)
+            
             # Check if screening result already exists
             existing = db.service_client.table("cv_screening_results").select("*").eq("application_id", str(application_id)).execute()
             
-            # Perform screening
-            screening_result = await self.screen_cv(cv_text, job_description)
+            # Perform screening with context for cost tracking
+            screening_result = await self.screen_cv(
+                cv_text,
+                job_description,
+                recruiter_id=context.get("recruiter_id"),
+                job_description_id=context.get("job_description_id"),
+                candidate_id=context.get("candidate_id")
+            )
             
             # Convert Decimal to float for JSON serialization
             screening_result_serializable = self._convert_decimal_to_float(screening_result)
@@ -324,7 +381,7 @@ Focus on:
             # Get job description
             job = db.service_client.table("job_descriptions").select("*").eq("id", str(job_description_id)).execute()
             if not job.data:
-                raise ValueError("Job description not found")
+                raise ValueError("Job description not found")                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
             
             job_description = job.data[0]
             results = []

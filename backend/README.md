@@ -20,6 +20,9 @@ backend/
 │   ├── ai/                  # AI integration
 │   ├── voice/               # Voice pipeline
 │   └── utils/               # Utilities
+├── docs/                  # Documentation
+│   ├── CORS_TROUBLESHOOTING.md
+│   └── CORS_CHECKLIST.md
 ├── requirements.txt
 ├── .env.example
 └── README.md
@@ -48,5 +51,7 @@ cp .env.example .env
 uvicorn app.main:app --reload
 ```
 
+## Documentation
 
-
+- [CORS Troubleshooting Guide](./docs/CORS_TROUBLESHOOTING.md) - Detailed guide for CORS errors and solutions
+- [CORS Configuration Checklist](./docs/CORS_CHECKLIST.md) - Checklist to prevent CORS issues

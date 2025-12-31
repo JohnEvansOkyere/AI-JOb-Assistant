@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from uuid import UUID
 from app.schemas.common import Response
 from app.utils.auth import get_current_user_id
+from app.services.usage_limit_checker import UsageLimitChecker
 from app.database import db
 import structlog
 
@@ -95,6 +96,34 @@ async def get_dashboard_stats(recruiter_id: UUID = Depends(get_current_user_id))
         
     except Exception as e:
         logger.error("Error fetching dashboard stats", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@router.get("/usage", response_model=Response[dict])
+async def get_usage_summary(recruiter_id: UUID = Depends(get_current_user_id)):
+    """
+    Get current usage summary and limits for the organization
+    
+    Args:
+        recruiter_id: Current user ID
+    
+    Returns:
+        Usage summary with current usage and limits
+    """
+    try:
+        summary = await UsageLimitChecker.get_usage_summary(recruiter_id)
+        
+        return Response(
+            success=True,
+            message="Usage summary retrieved successfully",
+            data=summary
+        )
+        
+    except Exception as e:
+        logger.error("Error fetching usage summary", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)

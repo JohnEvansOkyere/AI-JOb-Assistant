@@ -69,7 +69,31 @@ class CVDetailedAnalyzer:
     
     def __init__(self, provider_name: Optional[str] = None):
         """Initialize analyzer with AI provider"""
+        from app.config import settings
         self.provider = AIProviderFactory.create_provider(provider_name)
+        self.provider_name = provider_name or settings.primary_ai_provider
+    
+    def _get_provider_for_call(
+        self,
+        recruiter_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None,
+        feature_name: str = "cv_detailed_analysis"
+    ):
+        """Get provider (logged or regular) based on context"""
+        from app.ai.providers_wrapper import LoggedAIProvider
+        if recruiter_id or job_description_id:
+            # Use logged provider with context
+            return LoggedAIProvider(self.provider, self.provider_name), {
+                "recruiter_id": recruiter_id,
+                "interview_id": None,
+                "job_description_id": job_description_id,
+                "candidate_id": candidate_id,
+                "feature_name": feature_name
+            }
+        else:
+            # Use regular provider (backwards compatible)
+            return self.provider, {}
     
     async def analyze_cv(
         self,
@@ -93,18 +117,42 @@ class CVDetailedAnalyzer:
         logger.info("Starting detailed CV analysis", application_id=str(application_id))
         
         try:
-            # Run all analyses
+            # Get context for cost tracking
+            from app.services.ai_usage_context import get_application_context
+            context = await get_application_context(application_id)
+            
+            # Run all analyses with context
             format_analysis = self._analyze_formatting(cv_text)
             structure_analysis = self._analyze_structure(cv_text)
-            experience_analysis = await self._analyze_experience(cv_text, job_description)
+            experience_analysis = await self._analyze_experience(
+                cv_text, job_description,
+                recruiter_id=context.get("recruiter_id"),
+                job_description_id=context.get("job_description_id"),
+                candidate_id=context.get("candidate_id")
+            )
             education_analysis = self._analyze_education(cv_text, job_description)
-            skills_analysis = await self._analyze_skills(cv_text, job_description)
+            skills_analysis = await self._analyze_skills(
+                cv_text, job_description,
+                recruiter_id=context.get("recruiter_id"),
+                job_description_id=context.get("job_description_id"),
+                candidate_id=context.get("candidate_id")
+            )
             language_analysis = self._analyze_language(cv_text)
             ats_analysis = self._analyze_ats_compatibility(cv_text, job_description)
-            impact_analysis = await self._analyze_impact(cv_text, job_description)
+            impact_analysis = await self._analyze_impact(
+                cv_text, job_description,
+                recruiter_id=context.get("recruiter_id"),
+                job_description_id=context.get("job_description_id"),
+                candidate_id=context.get("candidate_id")
+            )
             
             # Calculate job match score with AI
-            job_match_score = await self._calculate_job_match(cv_text, job_description)
+            job_match_score = await self._calculate_job_match(
+                cv_text, job_description,
+                recruiter_id=context.get("recruiter_id"),
+                job_description_id=context.get("job_description_id"),
+                candidate_id=context.get("candidate_id")
+            )
             
             # Calculate overall score (weighted average)
             overall_score = self._calculate_overall_score(
@@ -353,7 +401,10 @@ class CVDetailedAnalyzer:
     async def _analyze_experience(
         self,
         cv_text: str,
-        job_description: Dict[str, Any]
+        job_description: Dict[str, Any],
+        recruiter_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None
     ) -> CVExperienceAnalysis:
         """Analyze work experience section quality"""
         issues = []
@@ -400,12 +451,22 @@ class CVDetailedAnalyzer:
             suggestions.append("Use bullet points to highlight your achievements")
         
         # Accomplishment orientation (use AI for deeper analysis)
-        accomplishment_score = await self._ai_analyze_accomplishments(cv_text)
+        accomplishment_score = await self._ai_analyze_accomplishments(
+            cv_text,
+            recruiter_id=recruiter_id,
+            job_description_id=job_description_id,
+            candidate_id=candidate_id
+        )
         
         # Relevance to job
         job_requirements = job_description.get('requirements', '')
         job_title = job_description.get('title', '')
-        relevance_score = await self._ai_analyze_relevance(cv_text, job_requirements, job_title)
+        relevance_score = await self._ai_analyze_relevance(
+            cv_text, job_requirements, job_title,
+            recruiter_id=recruiter_id,
+            job_description_id=job_description_id,
+            candidate_id=candidate_id
+        )
         
         # Keyword match
         keywords = self._extract_job_keywords(job_description)
@@ -549,14 +610,22 @@ class CVDetailedAnalyzer:
     async def _analyze_skills(
         self,
         cv_text: str,
-        job_description: Dict[str, Any]
+        job_description: Dict[str, Any],
+        recruiter_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None
     ) -> CVSkillsAnalysis:
         """Analyze skills section"""
         issues = []
         suggestions = []
         
         # Use AI to extract skills
-        skills_data = await self._ai_extract_skills(cv_text, job_description)
+        skills_data = await self._ai_extract_skills(
+            cv_text, job_description,
+            recruiter_id=recruiter_id,
+            job_description_id=job_description_id,
+            candidate_id=candidate_id
+        )
         
         technical_skills = skills_data.get('technical', [])
         soft_skills = skills_data.get('soft', [])
@@ -748,7 +817,10 @@ class CVDetailedAnalyzer:
     async def _analyze_impact(
         self,
         cv_text: str,
-        job_description: Dict[str, Any]
+        job_description: Dict[str, Any],
+        recruiter_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None
     ) -> CVImpactAnalysis:
         """Analyze overall impact and effectiveness"""
         issues = []
@@ -769,7 +841,12 @@ class CVDetailedAnalyzer:
             brevity_score = Decimal("75")
         
         # Use AI for clarity and professionalism analysis
-        impact_data = await self._ai_analyze_overall_impact(cv_text, job_description)
+        impact_data = await self._ai_analyze_overall_impact(
+            cv_text, job_description,
+            recruiter_id=recruiter_id,
+            job_description_id=job_description_id,
+            candidate_id=candidate_id
+        )
         
         clarity_score = Decimal(str(impact_data.get('clarity', 70)))
         professionalism_score = Decimal(str(impact_data.get('professionalism', 75)))
@@ -798,7 +875,13 @@ class CVDetailedAnalyzer:
     
     # AI-assisted analysis methods
     
-    async def _ai_analyze_accomplishments(self, cv_text: str) -> Decimal:
+    async def _ai_analyze_accomplishments(
+        self,
+        cv_text: str,
+        recruiter_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None
+    ) -> Decimal:
         """Use AI to analyze accomplishment orientation"""
         try:
             prompt = f"""Analyze this CV and rate how well it focuses on accomplishments vs responsibilities.
@@ -813,12 +896,29 @@ Rate from 0-100 where:
 
 Return ONLY a number between 0 and 100."""
             
-            response = await self.provider.generate_completion(
-                prompt=prompt,
-                system_prompt="You are a CV analysis expert. Return only a numeric score.",
-                max_tokens=50,
-                temperature=0.3
+            provider, context = self._get_provider_for_call(
+                recruiter_id=recruiter_id,
+                job_description_id=job_description_id,
+                candidate_id=candidate_id,
+                feature_name="cv_detailed_analysis"
             )
+            
+            from app.ai.providers_wrapper import LoggedAIProvider
+            if isinstance(provider, LoggedAIProvider):
+                response = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt="You are a CV analysis expert. Return only a numeric score.",
+                    max_tokens=50,
+                    temperature=0.3,
+                    **context
+                )
+            else:
+                response = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt="You are a CV analysis expert. Return only a numeric score.",
+                    max_tokens=50,
+                    temperature=0.3
+                )
             
             score = int(re.search(r'\d+', response).group())
             return Decimal(str(min(100, max(0, score))))
@@ -829,7 +929,10 @@ Return ONLY a number between 0 and 100."""
         self,
         cv_text: str,
         job_requirements: str,
-        job_title: str
+        job_title: str,
+        recruiter_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None
     ) -> Decimal:
         """Use AI to analyze relevance to job"""
         try:
@@ -848,12 +951,29 @@ Rate from 0-100 where:
 
 Return ONLY a number between 0 and 100."""
             
-            response = await self.provider.generate_completion(
-                prompt=prompt,
-                system_prompt="You are a recruiting expert. Return only a numeric score.",
-                max_tokens=50,
-                temperature=0.3
+            provider, context = self._get_provider_for_call(
+                recruiter_id=recruiter_id,
+                job_description_id=job_description_id,
+                candidate_id=candidate_id,
+                feature_name="cv_detailed_analysis"
             )
+            
+            from app.ai.providers_wrapper import LoggedAIProvider
+            if isinstance(provider, LoggedAIProvider):
+                response = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt="You are a recruiting expert. Return only a numeric score.",
+                    max_tokens=50,
+                    temperature=0.3,
+                    **context
+                )
+            else:
+                response = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt="You are a recruiting expert. Return only a numeric score.",
+                    max_tokens=50,
+                    temperature=0.3
+                )
             
             score = int(re.search(r'\d+', response).group())
             return Decimal(str(min(100, max(0, score))))
@@ -863,7 +983,10 @@ Return ONLY a number between 0 and 100."""
     async def _ai_extract_skills(
         self,
         cv_text: str,
-        job_description: Dict[str, Any]
+        job_description: Dict[str, Any],
+        recruiter_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None
     ) -> Dict[str, List[str]]:
         """Use AI to extract and categorize skills"""
         try:
@@ -886,12 +1009,29 @@ Return a JSON object with:
 
 Return ONLY the JSON object, no other text."""
             
-            response = await self.provider.generate_completion(
-                prompt=prompt,
-                system_prompt="You are a skills analysis expert. Return only valid JSON.",
-                max_tokens=500,
-                temperature=0.3
+            provider, context = self._get_provider_for_call(
+                recruiter_id=recruiter_id,
+                job_description_id=job_description_id,
+                candidate_id=candidate_id,
+                feature_name="cv_detailed_analysis"
             )
+            
+            from app.ai.providers_wrapper import LoggedAIProvider
+            if isinstance(provider, LoggedAIProvider):
+                response = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt="You are a skills analysis expert. Return only valid JSON.",
+                    max_tokens=500,
+                    temperature=0.3,
+                    **context
+                )
+            else:
+                response = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt="You are a skills analysis expert. Return only valid JSON.",
+                    max_tokens=500,
+                    temperature=0.3
+                )
             
             # Extract JSON from response
             json_match = re.search(r'\{[\s\S]*\}', response)
@@ -905,7 +1045,10 @@ Return ONLY the JSON object, no other text."""
     async def _ai_analyze_overall_impact(
         self,
         cv_text: str,
-        job_description: Dict[str, Any]
+        job_description: Dict[str, Any],
+        recruiter_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None
     ) -> Dict[str, Any]:
         """Use AI for overall impact analysis"""
         try:
@@ -926,12 +1069,29 @@ Return a JSON object with scores (0-100) and suggestions:
 
 Return ONLY the JSON object."""
             
-            response = await self.provider.generate_completion(
-                prompt=prompt,
-                system_prompt="You are a CV expert. Return only valid JSON.",
-                max_tokens=300,
-                temperature=0.3
+            provider, context = self._get_provider_for_call(
+                recruiter_id=recruiter_id,
+                job_description_id=job_description_id,
+                candidate_id=candidate_id,
+                feature_name="cv_detailed_analysis"
             )
+            
+            from app.ai.providers_wrapper import LoggedAIProvider
+            if isinstance(provider, LoggedAIProvider):
+                response = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt="You are a CV expert. Return only valid JSON.",
+                    max_tokens=300,
+                    temperature=0.3,
+                    **context
+                )
+            else:
+                response = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt="You are a CV expert. Return only valid JSON.",
+                    max_tokens=300,
+                    temperature=0.3
+                )
             
             json_match = re.search(r'\{[\s\S]*\}', response)
             if json_match:
@@ -943,7 +1103,10 @@ Return ONLY the JSON object."""
     async def _calculate_job_match(
         self,
         cv_text: str,
-        job_description: Dict[str, Any]
+        job_description: Dict[str, Any],
+        recruiter_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None
     ) -> Decimal:
         """Calculate overall job match score using AI"""
         try:
@@ -964,12 +1127,29 @@ Consider:
 
 Rate from 0-100. Return ONLY a number."""
             
-            response = await self.provider.generate_completion(
-                prompt=prompt,
-                system_prompt="You are a recruiting expert. Return only a numeric score.",
-                max_tokens=50,
-                temperature=0.3
+            provider, context = self._get_provider_for_call(
+                recruiter_id=recruiter_id,
+                job_description_id=job_description_id,
+                candidate_id=candidate_id,
+                feature_name="cv_detailed_analysis"
             )
+            
+            from app.ai.providers_wrapper import LoggedAIProvider
+            if isinstance(provider, LoggedAIProvider):
+                response = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt="You are a recruiting expert. Return only a numeric score.",
+                    max_tokens=50,
+                    temperature=0.3,
+                    **context
+                )
+            else:
+                response = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt="You are a recruiting expert. Return only a numeric score.",
+                    max_tokens=50,
+                    temperature=0.3
+                )
             
             score = int(re.search(r'\d+', response).group())
             return Decimal(str(min(100, max(0, score))))

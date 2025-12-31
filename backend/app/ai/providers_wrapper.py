@@ -6,9 +6,11 @@ Wraps AI provider calls with usage logging and cost tracking
 import time
 from typing import Optional, Dict, Any
 from uuid import UUID
+from decimal import Decimal
 from app.ai.providers import AIProvider
 from app.services.ai_usage_logger import AIUsageLogger
 from app.services.cost_calculator import CostCalculator
+from app.services.usage_limit_checker import UsageLimitChecker
 import structlog
 
 logger = structlog.get_logger()
@@ -50,6 +52,44 @@ class LoggedAIProvider:
         total_tokens = None
         
         try:
+            # Estimate cost before making the call to check limits
+            # This is an approximation - we'll use actual usage after the call
+            if recruiter_id:
+                # Estimate tokens for cost checking (rough estimate)
+                full_prompt = (system_prompt or "") + "\n\n" + prompt
+                estimated_prompt_tokens = self.provider.get_token_count(full_prompt)
+                # Estimate completion tokens (typically 20-30% of prompt for most queries)
+                estimated_completion_tokens = int(estimated_prompt_tokens * 0.25) if max_tokens else 300
+                estimated_total_tokens = estimated_prompt_tokens + estimated_completion_tokens
+                
+                # Calculate estimated cost
+                model_name = getattr(self.provider, 'model', None) or getattr(self.provider, 'model_name', None)
+                estimated_cost = CostCalculator.calculate_cost(
+                    provider_name=self.provider_name,
+                    model_name=model_name,
+                    prompt_tokens=estimated_prompt_tokens,
+                    completion_tokens=estimated_completion_tokens,
+                    total_tokens=estimated_total_tokens
+                )
+                
+                # Check cost limits before making the API call
+                try:
+                    await UsageLimitChecker.check_all_limits(
+                        recruiter_id=recruiter_id,
+                        check_interview_limit=False,  # Already checked when creating interview
+                        check_cost_limit=True,
+                        estimated_cost=estimated_cost
+                    )
+                except Exception as limit_error:
+                    # Check if it's a UsageLimitError
+                    if hasattr(limit_error, 'limit_type'):
+                        from fastapi import HTTPException, status
+                        raise HTTPException(
+                            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                            detail=str(limit_error)
+                        )
+                    raise
+            
             result = await self.provider.generate_completion(
                 prompt=prompt,
                 system_prompt=system_prompt,

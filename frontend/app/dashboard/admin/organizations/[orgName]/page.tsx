@@ -13,7 +13,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { StatCard } from '@/components/ui/StatCard'
 import { apiClient } from '@/lib/api/client'
-import { Building2, Users, FileText, DollarSign, TrendingUp, AlertTriangle, CheckCircle, Settings, Pause, Play, XCircle, CreditCard, BarChart3, FileText as NotesIcon } from 'lucide-react'
+import { Building2, Users, FileText, DollarSign, TrendingUp, AlertTriangle, CheckCircle, Settings, Pause, Play, XCircle, CreditCard, BarChart3, FileText as NotesIcon, Filter, RefreshCw } from 'lucide-react'
 import { LineChart, BarChart } from '@/components/ui/SimpleChart'
 import { StatusChangeModal } from '@/components/admin/StatusChangeModal'
 import { PlanChangeModal } from '@/components/admin/PlanChangeModal'
@@ -57,6 +57,25 @@ interface OrganizationDetail {
   }
 }
 
+interface CostBreakdown {
+  organization: string
+  total_cost: number
+  breakdown: Array<{
+    name: string
+    cost: number
+    count: number
+    tokens: number
+  }>
+  summary: {
+    total_requests: number
+    total_tokens: number
+    period: {
+      start: string
+      end: string
+    }
+  }
+}
+
 export default function AdminOrganizationDetailPage() {
   const router = useRouter()
   const params = useParams()
@@ -72,6 +91,11 @@ export default function AdminOrganizationDetailPage() {
   const [showPlanModal, setShowPlanModal] = useState(false)
   const [showLimitsModal, setShowLimitsModal] = useState(false)
   const [showNotesModal, setShowNotesModal] = useState(false)
+  
+  // Cost breakdown states
+  const [costBreakdown, setCostBreakdown] = useState<CostBreakdown | null>(null)
+  const [breakdownLoading, setBreakdownLoading] = useState(false)
+  const [breakdownGroupBy, setBreakdownGroupBy] = useState<'feature' | 'provider' | 'user' | 'day' | 'month'>('feature')
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -131,7 +155,46 @@ export default function AdminOrganizationDetailPage() {
     setSuccessMessage('Settings updated successfully')
     setTimeout(() => setSuccessMessage(null), 5000)
     loadDetail()
+    loadCostBreakdown()
   }
+  
+  const loadCostBreakdown = async () => {
+    try {
+      setBreakdownLoading(true)
+      const token = localStorage.getItem('auth_token')
+      if (token) {
+        apiClient.setToken(token)
+      }
+      
+      // Calculate date range (last 30 days)
+      const endDate = new Date()
+      const startDate = new Date()
+      startDate.setDate(startDate.getDate() - 30)
+      
+      // Format dates for API (ISO format)
+      const startDateStr = startDate.toISOString().split('T')[0] + 'T00:00:00Z'
+      const endDateStr = endDate.toISOString().split('T')[0] + 'T23:59:59Z'
+      
+      const response = await apiClient.get<CostBreakdown>(
+        `/admin/costs/organizations/${encodeURIComponent(orgName)}?group_by=${breakdownGroupBy}&start_date=${encodeURIComponent(startDateStr)}&end_date=${encodeURIComponent(endDateStr)}`
+      )
+      
+      if (response.success && response.data) {
+        setCostBreakdown(response.data)
+      }
+    } catch (err: any) {
+      console.error('Error loading cost breakdown:', err)
+      // Don't show error to user, just log it
+    } finally {
+      setBreakdownLoading(false)
+    }
+  }
+  
+  useEffect(() => {
+    if (detail && isAuthenticated) {
+      loadCostBreakdown()
+    }
+  }, [detail, breakdownGroupBy, isAuthenticated])
 
   const getStatusBadge = (status?: string) => {
     const statusColor = {
@@ -430,6 +493,128 @@ export default function AdminOrganizationDetailPage() {
             )}
           </Card>
         </div>
+
+        {/* Detailed Cost Breakdown */}
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Detailed Cost Breakdown</h2>
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-gray-500" />
+              <select
+                value={breakdownGroupBy}
+                onChange={(e) => setBreakdownGroupBy(e.target.value as any)}
+                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="feature">By Feature</option>
+                <option value="provider">By Provider</option>
+                <option value="user">By User</option>
+                <option value="day">By Day</option>
+                <option value="month">By Month</option>
+              </select>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={loadCostBreakdown}
+                disabled={breakdownLoading}
+              >
+                <RefreshCw className={`w-4 h-4 ${breakdownLoading ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
+          </div>
+          
+          {breakdownLoading ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
+              <p className="mt-2 text-sm text-gray-600">Loading breakdown...</p>
+            </div>
+          ) : costBreakdown && costBreakdown.breakdown.length > 0 ? (
+            <div className="space-y-4">
+              {/* Summary */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
+                <div>
+                  <div className="text-sm text-gray-500">Total Cost</div>
+                  <div className="text-xl font-bold text-gray-900">{formatCurrency(costBreakdown.total_cost)}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500">Total Requests</div>
+                  <div className="text-xl font-bold text-gray-900">{costBreakdown.summary.total_requests.toLocaleString()}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500">Total Tokens</div>
+                  <div className="text-xl font-bold text-gray-900">{costBreakdown.summary.total_tokens.toLocaleString()}</div>
+                </div>
+              </div>
+
+              {/* Breakdown Table */}
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        {breakdownGroupBy === 'feature' ? 'Feature' : 
+                         breakdownGroupBy === 'provider' ? 'Provider' : 
+                         breakdownGroupBy === 'user' ? 'User' : 
+                         breakdownGroupBy === 'day' ? 'Date' : 'Month'}
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Cost
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Requests
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Tokens
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Avg Cost/Request
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {costBreakdown.breakdown.map((item, index) => (
+                      <tr key={index} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">
+                            {breakdownGroupBy === 'feature' 
+                              ? item.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                              : item.name}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-semibold text-gray-900">
+                          {formatCurrency(item.cost)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-600">
+                          {item.count.toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-600">
+                          {item.tokens.toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-600">
+                          {item.count > 0 ? formatCurrency(item.cost / item.count) : '$0.00'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Chart */}
+              <div className="mt-6">
+                <h3 className="text-sm font-medium text-gray-700 mb-3">Cost Distribution</h3>
+                <BarChart
+                  data={costBreakdown.breakdown.slice(0, 10).map(item => ({
+                    label: breakdownGroupBy === 'feature' 
+                      ? item.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                      : item.name,
+                    value: item.cost,
+                  }))}
+                />
+              </div>
+            </div>
+          ) : (
+            <p className="text-gray-500 text-center py-8">No cost breakdown data available for the selected period</p>
+          )}
+        </Card>
 
         {/* System Health */}
         <Card>

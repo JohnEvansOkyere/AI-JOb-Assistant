@@ -166,6 +166,263 @@ async def get_cost_monitoring(
         )
 
 
+@router.get("/costs/organizations/{org_name}", response_model=Response[dict])
+async def get_organization_cost_breakdown(
+    org_name: str,
+    start_date: datetime = Query(None),
+    end_date: datetime = Query(None),
+    group_by: str = Query("feature", regex="^(feature|provider|user|day|month)$"),
+    admin_user: dict = Depends(get_current_admin)
+):
+    """
+    Get cost breakdown for a specific organization
+    
+    Args:
+        org_name: Organization name (company_name)
+        start_date: Start date (defaults to 30 days ago)
+        end_date: End date (defaults to now)
+        group_by: Group by feature, provider, user, day, or month
+        admin_user: Current admin user (for authorization)
+    
+    Returns:
+        Cost breakdown by specified grouping
+    """
+    try:
+        from app.services.admin_service import AdminService
+        from app.database import db
+        
+        # Default to 30 days if not specified
+        if not start_date:
+            start_date = datetime.utcnow() - timedelta(days=30)
+        if not end_date:
+            end_date = datetime.utcnow()
+        
+        # Get organization ID
+        org_response = db.service_client.table("organizations").select("id").eq("company_name", org_name).execute()
+        if not org_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Organization '{org_name}' not found"
+            )
+        
+        org_id = org_response.data[0]["id"]
+        
+        # Get all recruiters in this organization
+        recruiters_response = db.service_client.table("recruiters").select("id").eq("organization_id", org_id).execute()
+        recruiter_ids = [r["id"] for r in (recruiters_response.data or [])]
+        
+        if not recruiter_ids:
+            return Response(
+                success=True,
+                message=f"No users found for organization '{org_name}'",
+                data={
+                    "organization": org_name,
+                    "total_cost": 0.0,
+                    "breakdown": [],
+                    "summary": {}
+                }
+            )
+        
+        # Build query
+        query = db.service_client.table("ai_usage_logs").select("*")
+        query = query.in_("recruiter_id", recruiter_ids)
+        query = query.gte("created_at", start_date.isoformat())
+        query = query.lte("created_at", end_date.isoformat())
+        query = query.eq("status", "success")
+        
+        logs = query.execute()
+        
+        # Aggregate costs
+        total_cost = 0.0
+        breakdown = {}
+        
+        for log in (logs.data or []):
+            cost = float(log.get("estimated_cost_usd", 0) or 0)
+            total_cost += cost
+            
+            key = None
+            if group_by == "feature":
+                key = log.get("feature_name", "unknown")
+            elif group_by == "provider":
+                key = log.get("provider_name", "unknown")
+            elif group_by == "user":
+                key = log.get("recruiter_id", "unknown")
+            elif group_by in ["day", "month"]:
+                created_at = log.get("created_at")
+                if created_at:
+                    dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                    if group_by == "day":
+                        key = dt.strftime("%Y-%m-%d")
+                    else:
+                        key = dt.strftime("%Y-%m")
+            
+            if key:
+                if key not in breakdown:
+                    breakdown[key] = {
+                        "name": key,
+                        "cost": 0.0,
+                        "count": 0,
+                        "tokens": 0
+                    }
+                breakdown[key]["cost"] += cost
+                breakdown[key]["count"] += 1
+                breakdown[key]["tokens"] += int(log.get("total_tokens", 0) or 0)
+        
+        # Convert to list and sort by cost
+        breakdown_list = sorted(breakdown.values(), key=lambda x: x["cost"], reverse=True)
+        
+        # Get user names if grouping by user
+        if group_by == "user":
+            for item in breakdown_list:
+                user_response = db.service_client.table("recruiters").select("full_name, email").eq("id", item["name"]).execute()
+                if user_response.data:
+                    user = user_response.data[0]
+                    item["name"] = user.get("full_name") or user.get("email") or item["name"]
+        
+        return Response(
+            success=True,
+            message=f"Cost breakdown retrieved for organization '{org_name}'",
+            data={
+                "organization": org_name,
+                "total_cost": round(total_cost, 4),
+                "breakdown": breakdown_list,
+                "summary": {
+                    "total_requests": sum(item["count"] for item in breakdown_list),
+                    "total_tokens": sum(item["tokens"] for item in breakdown_list),
+                    "period": {
+                        "start": start_date.isoformat(),
+                        "end": end_date.isoformat()
+                    }
+                }
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error fetching organization cost breakdown", error=str(e), org_name=org_name)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch cost breakdown: {str(e)}"
+        )
+
+
+@router.get("/costs/users/{user_id}", response_model=Response[dict])
+async def get_user_cost_breakdown(
+    user_id: str,
+    start_date: datetime = Query(None),
+    end_date: datetime = Query(None),
+    group_by: str = Query("feature", regex="^(feature|provider|day|month)$"),
+    admin_user: dict = Depends(get_current_admin)
+):
+    """
+    Get cost breakdown for a specific user/recruiter
+    
+    Args:
+        user_id: User/recruiter ID
+        start_date: Start date (defaults to 30 days ago)
+        end_date: End date (defaults to now)
+        group_by: Group by feature, provider, day, or month
+        admin_user: Current admin user (for authorization)
+    
+    Returns:
+        Cost breakdown by specified grouping
+    """
+    try:
+        from app.database import db
+        
+        # Default to 30 days if not specified
+        if not start_date:
+            start_date = datetime.utcnow() - timedelta(days=30)
+        if not end_date:
+            end_date = datetime.utcnow()
+        
+        # Verify user exists
+        user_response = db.service_client.table("recruiters").select("full_name, email, organization_id").eq("id", user_id).execute()
+        if not user_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User '{user_id}' not found"
+            )
+        
+        user = user_response.data[0]
+        
+        # Build query
+        query = db.service_client.table("ai_usage_logs").select("*")
+        query = query.eq("recruiter_id", user_id)
+        query = query.gte("created_at", start_date.isoformat())
+        query = query.lte("created_at", end_date.isoformat())
+        query = query.eq("status", "success")
+        
+        logs = query.execute()
+        
+        # Aggregate costs
+        total_cost = 0.0
+        breakdown = {}
+        
+        for log in (logs.data or []):
+            cost = float(log.get("estimated_cost_usd", 0) or 0)
+            total_cost += cost
+            
+            key = None
+            if group_by == "feature":
+                key = log.get("feature_name", "unknown")
+            elif group_by == "provider":
+                key = log.get("provider_name", "unknown")
+            elif group_by in ["day", "month"]:
+                created_at = log.get("created_at")
+                if created_at:
+                    dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                    if group_by == "day":
+                        key = dt.strftime("%Y-%m-%d")
+                    else:
+                        key = dt.strftime("%Y-%m")
+            
+            if key:
+                if key not in breakdown:
+                    breakdown[key] = {
+                        "name": key,
+                        "cost": 0.0,
+                        "count": 0,
+                        "tokens": 0
+                    }
+                breakdown[key]["cost"] += cost
+                breakdown[key]["count"] += 1
+                breakdown[key]["tokens"] += int(log.get("total_tokens", 0) or 0)
+        
+        # Convert to list and sort by cost
+        breakdown_list = sorted(breakdown.values(), key=lambda x: x["cost"], reverse=True)
+        
+        return Response(
+            success=True,
+            message=f"Cost breakdown retrieved for user",
+            data={
+                "user": {
+                    "id": user_id,
+                    "name": user.get("full_name") or user.get("email"),
+                    "email": user.get("email")
+                },
+                "total_cost": round(total_cost, 4),
+                "breakdown": breakdown_list,
+                "summary": {
+                    "total_requests": sum(item["count"] for item in breakdown_list),
+                    "total_tokens": sum(item["tokens"] for item in breakdown_list),
+                    "period": {
+                        "start": start_date.isoformat(),
+                        "end": end_date.isoformat()
+                    }
+                }
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error fetching user cost breakdown", error=str(e), user_id=user_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch cost breakdown: {str(e)}"
+        )
+
+
 @router.get("/system-health", response_model=Response[dict])
 async def get_system_health(
     start_date: datetime = Query(None),

@@ -3,40 +3,63 @@ Application Configuration
 Manages environment variables and application settings
 """
 
-from pydantic_settings import BaseSettings
-from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator, Field
 from typing import List, Optional
 import os
+import json
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
     
     # Application
     app_name: str = "AI Voice Interview Platform"
     app_env: str = "development"
     app_debug: bool = True
     secret_key: str
-    allowed_origins: List[str] = ["http://localhost:3000"]
     
-    @field_validator('allowed_origins', mode='before')
-    @classmethod
-    def parse_allowed_origins(cls, v):
+    # Store as string to avoid auto JSON parsing - will be converted to List[str]
+    allowed_origins_str: Optional[str] = Field(default=None)
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # After initialization, ensure allowed_origins_str is set from env if not provided
+        if self.allowed_origins_str is None:
+            env_value = os.getenv('ALLOWED_ORIGINS')
+            if env_value:
+                self.allowed_origins_str = env_value
+    
+    @property
+    def allowed_origins(self) -> List[str]:
         """Parse ALLOWED_ORIGINS from environment variable (comma-separated or JSON)"""
-        if isinstance(v, str):
-            # Try to parse as JSON first
-            import json
-            try:
-                return json.loads(v)
-            except (json.JSONDecodeError, ValueError):
-                # If not JSON, split by comma
-                origins = [origin.strip() for origin in v.split(',') if origin.strip()]
-                return origins if origins else ["http://localhost:3000"]
-        # If it's already a list, return as-is
-        if isinstance(v, list):
-            return v
-        # Default fallback
-        return ["http://localhost:3000"]
+        raw = self.allowed_origins_str
+        
+        # Handle None or empty values
+        if not raw or not raw.strip():
+            return ["http://localhost:3000"]
+        
+        raw = raw.strip()
+        
+        # Try to parse as JSON first
+        try:
+            parsed = json.loads(raw)
+            # Ensure it's a list
+            if isinstance(parsed, list):
+                return parsed if parsed else ["http://localhost:3000"]
+            # If it's a single string, wrap it in a list
+            return [parsed] if parsed else ["http://localhost:3000"]
+        except (json.JSONDecodeError, ValueError):
+            # If not JSON, split by comma
+            origins = [origin.strip() for origin in raw.split(',') if origin.strip()]
+            return origins if origins else ["http://localhost:3000"]
     
     def get_allowed_origins_with_patterns(self) -> List[str]:
         """Get allowed origins including Vercel preview URL patterns"""
@@ -153,10 +176,6 @@ class Settings(BaseSettings):
     sentry_environment: Optional[str] = None  # production, staging, development (defaults to app_env)
     sentry_traces_sample_rate: float = 1.0  # 0.0 to 1.0 (1.0 = 100% of transactions, lower for high traffic)
     sentry_profiles_sample_rate: float = 1.0  # Performance profiling sample rate
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
 
 
 # Global settings instance

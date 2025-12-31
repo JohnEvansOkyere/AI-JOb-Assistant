@@ -393,50 +393,181 @@ class AdminService:
                 month_key = f"{dt.year}-{dt.month:02d}"
                 monthly_costs[month_key] = monthly_costs.get(month_key, 0) + cost
             
-            # Cost by feature
+            # Cost by feature with counts
             feature_costs = {}
+            feature_counts = {}
             for log in usage_logs:
                 feature = log.get("feature_name", "unknown")
                 cost = float(log.get("estimated_cost_usd", 0))
                 feature_costs[feature] = feature_costs.get(feature, 0) + cost
+                feature_counts[feature] = feature_counts.get(feature, 0) + 1
             
-            # Top 10 highest cost organizations
+            # Cost by provider with counts and tokens
+            provider_costs = {}
+            provider_counts = {}
+            provider_tokens = {}
+            for log in usage_logs:
+                provider = log.get("provider_name", "unknown")
+                cost = float(log.get("estimated_cost_usd", 0))
+                provider_costs[provider] = provider_costs.get(provider, 0) + cost
+                provider_counts[provider] = provider_counts.get(provider, 0) + 1
+                
+                # Track tokens for token-based providers
+                if provider in ["openai", "groq", "gemini"]:
+                    tokens = int(log.get("total_tokens", 0) or 0)
+                    provider_tokens[provider] = provider_tokens.get(provider, 0) + tokens
+            
+            # Top organizations with detailed info
             org_costs = {}
+            org_request_counts = {}
+            org_user_counts = {}
+            org_user_map = {}
+            
+            # Get all recruiter IDs and their organizations
+            recruiter_ids = list(set(log.get("recruiter_id") for log in usage_logs if log.get("recruiter_id")))
+            if recruiter_ids:
+                users_response = (
+                    db.service_client.table("users")
+                    .select("id, company_name, full_name, email")
+                    .in_("id", recruiter_ids)
+                    .execute()
+                )
+                
+                for user in (users_response.data or []):
+                    org_name = user.get("company_name") or "Unknown"
+                    user_id = user["id"]
+                    org_user_map[user_id] = org_name
+                    
+                    if org_name not in org_user_counts:
+                        org_user_counts[org_name] = set()
+                    org_user_counts[org_name].add(user_id)
+            
+            # Calculate org costs and request counts
             for log in usage_logs:
                 recruiter_id = log.get("recruiter_id")
                 if not recruiter_id:
                     continue
                 
-                # Get user's company_name
-                user_response = (
-                    db.service_client.table("users")
-                    .select("company_name")
-                    .eq("id", recruiter_id)
-                    .execute()
-                )
-                if user_response.data:
-                    org_name = user_response.data[0].get("company_name") or "Unnamed Company"
-                    cost = float(log.get("estimated_cost_usd", 0))
-                    org_costs[org_name] = org_costs.get(org_name, 0) + cost
+                org_name = org_user_map.get(recruiter_id, "Unknown")
+                cost = float(log.get("estimated_cost_usd", 0))
+                org_costs[org_name] = org_costs.get(org_name, 0) + cost
+                org_request_counts[org_name] = org_request_counts.get(org_name, 0) + 1
             
+            # Sort organizations by cost
             top_orgs = sorted(
-                org_costs.items(),
+                [
+                    {
+                        "org_name": name,
+                        "cost_usd": round(cost, 4),
+                        "request_count": org_request_counts.get(name, 0),
+                        "user_count": len(org_user_counts.get(name, set())),
+                        "avg_cost_per_request": round(cost / org_request_counts.get(name, 1), 6)
+                    }
+                    for name, cost in org_costs.items()
+                ],
+                key=lambda x: x["cost_usd"],
+                reverse=True
+            )[:20]  # Top 20 instead of 10
+            
+            # Cost by user/client
+            user_costs = {}
+            user_request_counts = {}
+            
+            for log in usage_logs:
+                recruiter_id = log.get("recruiter_id")
+                if not recruiter_id:
+                    continue
+                
+                cost = float(log.get("estimated_cost_usd", 0))
+                user_costs[recruiter_id] = user_costs.get(recruiter_id, 0) + cost
+                user_request_counts[recruiter_id] = user_request_counts.get(recruiter_id, 0) + 1
+            
+            # Get user details for top users
+            top_user_ids = sorted(
+                user_costs.items(),
                 key=lambda x: x[1],
                 reverse=True
-            )[:10]
+            )[:20]
+            
+            top_users = []
+            if top_user_ids:
+                user_ids_list = [uid for uid, _ in top_user_ids]
+                users_detail_response = (
+                    db.service_client.table("users")
+                    .select("id, full_name, email, company_name")
+                    .in_("id", user_ids_list)
+                    .execute()
+                )
+                
+                users_detail_map = {u["id"]: u for u in (users_detail_response.data or [])}
+                
+                for user_id, cost in top_user_ids:
+                    user_detail = users_detail_map.get(user_id, {})
+                    top_users.append({
+                        "user_id": user_id,
+                        "user_name": user_detail.get("full_name") or user_detail.get("email") or "Unknown",
+                        "user_email": user_detail.get("email"),
+                        "org_name": user_detail.get("company_name") or "Unknown",
+                        "cost_usd": round(cost, 4),
+                        "request_count": user_request_counts.get(user_id, 0),
+                        "avg_cost_per_request": round(cost / user_request_counts.get(user_id, 1), 6)
+                    })
+            
+            # Calculate totals and averages
+            total_cost = sum(daily_costs.values())
+            total_requests = len(usage_logs)
+            total_tokens = sum(provider_tokens.values())
+            
+            days_in_period = (end_date - start_date).days + 1
+            avg_daily_cost = total_cost / days_in_period if days_in_period > 0 else 0
+            avg_cost_per_request = total_cost / total_requests if total_requests > 0 else 0
+            
+            # Monthly projection
+            monthly_projection = avg_daily_cost * 30
+            
+            # Success/failure rates
+            successful_logs = [log for log in usage_logs if log.get("status") == "success"]
+            failed_logs = [log for log in usage_logs if log.get("status") != "success"]
+            success_rate = (len(successful_logs) / total_requests * 100) if total_requests > 0 else 0
             
             return {
                 "period": {
                     "start_date": start_date.isoformat(),
                     "end_date": end_date.isoformat(),
+                    "days": days_in_period
                 },
-                "daily_costs": {k: round(v, 2) for k, v in sorted(daily_costs.items())},
-                "monthly_costs": {k: round(v, 2) for k, v in sorted(monthly_costs.items())},
-                "cost_by_feature": {k: round(v, 2) for k, v in feature_costs.items()},
-                "top_organizations": [
-                    {"org_name": org, "cost_usd": round(cost, 2)}
-                    for org, cost in top_orgs
-                ],
+                "summary": {
+                    "total_cost_usd": round(total_cost, 4),
+                    "total_requests": total_requests,
+                    "total_tokens": total_tokens,
+                    "avg_daily_cost_usd": round(avg_daily_cost, 4),
+                    "avg_cost_per_request_usd": round(avg_cost_per_request, 6),
+                    "monthly_projection_usd": round(monthly_projection, 4),
+                    "success_rate_percent": round(success_rate, 2),
+                    "successful_requests": len(successful_logs),
+                    "failed_requests": len(failed_logs)
+                },
+                "daily_costs": {k: round(v, 4) for k, v in sorted(daily_costs.items())},
+                "monthly_costs": {k: round(v, 4) for k, v in sorted(monthly_costs.items())},
+                "cost_by_feature": {
+                    k: {
+                        "cost_usd": round(v, 4),
+                        "request_count": feature_counts.get(k, 0),
+                        "avg_cost_per_request": round(v / feature_counts.get(k, 1), 6)
+                    }
+                    for k, v in feature_costs.items()
+                },
+                "cost_by_provider": {
+                    k: {
+                        "cost_usd": round(v, 4),
+                        "request_count": provider_counts.get(k, 0),
+                        "tokens": provider_tokens.get(k, 0),
+                        "avg_cost_per_request": round(v / provider_counts.get(k, 1), 6)
+                    }
+                    for k, v in provider_costs.items()
+                },
+                "top_organizations": top_orgs,
+                "top_users": top_users
             }
             
         except Exception as e:

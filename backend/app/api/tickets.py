@@ -10,6 +10,7 @@ from app.schemas.common import Response
 from app.models.interview_ticket import InterviewTicket
 from app.services.ticket_service import TicketService
 from app.services.email_service import EmailService
+from app.services.usage_limit_checker import UsageLimitChecker
 from app.utils.auth import get_current_user_id
 from app.database import db
 import structlog
@@ -59,6 +60,22 @@ async def create_ticket(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="interview_mode must be 'text' or 'voice'"
             )
+        
+        # Check usage limits before creating ticket
+        try:
+            await UsageLimitChecker.check_all_limits(
+                recruiter_id=recruiter_id,
+                check_interview_limit=True,  # Check monthly interview limit
+                check_cost_limit=False  # Cost checked later when AI is actually used
+            )
+        except Exception as e:
+            # Check if it's a UsageLimitError
+            if hasattr(e, 'limit_type'):
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=str(e)
+                )
+            raise
         
         ticket = await TicketService.create_ticket(
             candidate_id=candidate_id,

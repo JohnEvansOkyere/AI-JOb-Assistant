@@ -28,6 +28,29 @@ async def analyze_application_cv(
     Trigger detailed CV analysis for an application
     """
     try:
+        # Check usage limits before expensive AI operation
+        from app.services.usage_limit_checker import UsageLimitChecker
+        from decimal import Decimal
+        
+        # Estimate cost for detailed CV analysis (this can be expensive - multiple AI calls)
+        # Rough estimate: $0.01-0.05 per analysis
+        estimated_cost = Decimal('0.03')
+        
+        try:
+            await UsageLimitChecker.check_all_limits(
+                recruiter_id=current_user['id'],
+                check_interview_limit=False,
+                check_cost_limit=True,
+                estimated_cost=estimated_cost
+            )
+        except Exception as e:
+            if hasattr(e, 'limit_type'):
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=str(e)
+                )
+            raise
+        
         # Get application with CV
         application = db.service_client.table("job_applications").select(
             "*, cvs(id, parsed_text), job_descriptions(*)"

@@ -22,25 +22,34 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         origin = request.headers.get("origin")
         
-        # Handle OPTIONS preflight for Vercel preview URLs BEFORE other middleware
-        if request.method == "OPTIONS" and origin and "vercel.app" in origin:
-            from fastapi import Response
-            response = Response()
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-            # Must explicitly list Authorization - browsers don't allow * for this header
-            response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept, X-Requested-With"
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Max-Age"] = "600"
+        # Handle OPTIONS preflight requests FIRST - before any route handlers
+        if request.method == "OPTIONS":
+            response = Response(status_code=200)
+            
+            # Always allow OPTIONS from localhost or Vercel
+            if origin:
+                if "localhost" in origin or "127.0.0.1" in origin or "vercel.app" in origin:
+                    response.headers["Access-Control-Allow-Origin"] = origin
+                    response.headers["Access-Control-Allow-Credentials"] = "true"
+                    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+                    response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept, X-Requested-With"
+                    response.headers["Access-Control-Max-Age"] = "600"
+            
+            # Add security headers to OPTIONS response too
+            response.headers["X-Content-Type-Options"] = "nosniff"
             return response
         
         response = await call_next(request)
         
-        # Add CORS headers for Vercel preview URLs on regular requests
-        if origin and "vercel.app" in origin:
+        # Add CORS headers if not already set by CORSMiddleware (fallback for localhost and Vercel)
+        if origin:
             if "Access-Control-Allow-Origin" not in response.headers:
-                response.headers["Access-Control-Allow-Origin"] = origin
-                response.headers["Access-Control-Allow-Credentials"] = "true"
+                # Check if origin should be allowed (localhost, 127.0.0.1, or Vercel)
+                if "localhost" in origin or "127.0.0.1" in origin or "vercel.app" in origin:
+                    response.headers["Access-Control-Allow-Origin"] = origin
+                    response.headers["Access-Control-Allow-Credentials"] = "true"
+                    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+                    response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept, X-Requested-With"
         
         # Security headers
         response.headers["X-Content-Type-Options"] = "nosniff"

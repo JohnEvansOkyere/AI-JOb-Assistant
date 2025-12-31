@@ -12,12 +12,15 @@ from uuid import UUID
 from decimal import Decimal
 
 from app.ai.providers import AIProviderFactory
+from app.ai.providers_wrapper import LoggedAIProvider
 from app.ai.interview_analysis_prompts import InterviewAnalysisPrompts
 from app.models.detailed_interview_analysis import (
     DetailedInterviewAnalysisCreate,
     DetailedInterviewAnalysisUpdate,
 )
 from app.database import db
+from app.services.ai_usage_context import get_interview_context
+from app.config import settings
 import structlog
 
 logger = structlog.get_logger()
@@ -29,6 +32,7 @@ class DetailedInterviewAnalyzer:
     def __init__(self, provider_name: Optional[str] = None):
         """Initialize the analyzer with AI provider"""
         self.provider = AIProviderFactory.create_provider(provider_name)
+        self.provider_name = provider_name or settings.primary_ai_provider
         self.prompts = InterviewAnalysisPrompts()
 
     async def analyze_interview(self, interview_id: UUID) -> Dict[str, Any]:
@@ -64,9 +68,9 @@ class DetailedInterviewAnalyzer:
                 logger.warning("No Q&A pairs found for interview", interview_id=str(interview_id))
                 return {"error": "No interview responses found"}
 
-            # Run comprehensive analysis
+            # Run comprehensive analysis with cost tracking
             analysis = await self._run_comprehensive_analysis(
-                interview_data, job_description, cv_text, qa_pairs
+                interview_data, job_description, cv_text, qa_pairs, interview_id
             )
 
             # Calculate aggregate scores
@@ -174,8 +178,12 @@ class DetailedInterviewAnalyzer:
         job_description: Dict[str, Any],
         cv_text: str,
         qa_pairs: List[Dict[str, str]],
+        interview_id: UUID,
     ) -> Dict[str, Any]:
         """Run the main comprehensive analysis using AI"""
+        
+        # Get context for cost tracking
+        context = await get_interview_context(interview_id)
         
         # Format Q&A for prompt
         formatted_qa = [
@@ -187,17 +195,40 @@ class DetailedInterviewAnalyzer:
             interview_data, job_description, cv_text, formatted_qa
         )
 
+        # Get provider with cost tracking if context available
+        if context.get("recruiter_id") or context.get("interview_id"):
+            provider = LoggedAIProvider(self.provider, self.provider_name)
+            provider_context = {
+                "recruiter_id": context.get("recruiter_id"),
+                "interview_id": interview_id,
+                "job_description_id": context.get("job_description_id"),
+                "candidate_id": context.get("candidate_id"),
+                "feature_name": "detailed_interview_analysis"
+            }
+        else:
+            provider = self.provider
+            provider_context = {}
+
         # Try with current provider, fallback to others if API errors occur
         last_error = None
         providers_tried = []
         
         try:
-            analysis_text = await self.provider.generate_completion(
-                prompt=prompt,
-                system_prompt=self.prompts.COMPREHENSIVE_ANALYSIS_SYSTEM_PROMPT,
-                max_tokens=4000,
-                temperature=0.4,
-            )
+            if isinstance(provider, LoggedAIProvider):
+                analysis_text = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt=self.prompts.COMPREHENSIVE_ANALYSIS_SYSTEM_PROMPT,
+                    max_tokens=4000,
+                    temperature=0.4,
+                    **provider_context
+                )
+            else:
+                analysis_text = await provider.generate_completion(
+                    prompt=prompt,
+                    system_prompt=self.prompts.COMPREHENSIVE_ANALYSIS_SYSTEM_PROMPT,
+                    max_tokens=4000,
+                    temperature=0.4,
+                )
 
             # Parse JSON from response
             analysis = self._parse_json_response(analysis_text)
@@ -254,15 +285,30 @@ class DetailedInterviewAnalyzer:
                     if provider_name != current_provider_name:
                         try:
                             logger.info(f"Trying fallback provider: {provider_name}")
-                            self.provider = AIProviderFactory.create_provider(provider_name)
+                            fallback_provider_base = AIProviderFactory.create_provider(provider_name)
+                            # Use logged provider for fallback too if context available
+                            if isinstance(provider, LoggedAIProvider):
+                                fallback_provider = LoggedAIProvider(fallback_provider_base, provider_name)
+                            else:
+                                fallback_provider = fallback_provider_base
+                            self.provider = fallback_provider_base  # Store base for next iteration
                             providers_tried.append(provider_name)
                             
-                            analysis_text = await self.provider.generate_completion(
-                                prompt=prompt,
-                                system_prompt=self.prompts.COMPREHENSIVE_ANALYSIS_SYSTEM_PROMPT,
-                                max_tokens=4000,
-                                temperature=0.4,
-                            )
+                            if isinstance(fallback_provider, LoggedAIProvider):
+                                analysis_text = await fallback_provider.generate_completion(
+                                    prompt=prompt,
+                                    system_prompt=self.prompts.COMPREHENSIVE_ANALYSIS_SYSTEM_PROMPT,
+                                    max_tokens=4000,
+                                    temperature=0.4,
+                                    **provider_context
+                                )
+                            else:
+                                analysis_text = await fallback_provider.generate_completion(
+                                    prompt=prompt,
+                                    system_prompt=self.prompts.COMPREHENSIVE_ANALYSIS_SYSTEM_PROMPT,
+                                    max_tokens=4000,
+                                    temperature=0.4,
+                                )
                             
                             # Success with fallback provider
                             logger.info(f"Successfully used fallback provider: {provider_name}")

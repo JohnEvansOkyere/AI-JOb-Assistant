@@ -98,9 +98,24 @@ app = FastAPI(
 
 # CORS middleware - simple approach
 # Use standard CORSMiddleware with origins from settings
+# For localhost, ensure we allow both with and without trailing slash
+cors_origins = settings.allowed_origins if settings.allowed_origins else ["*"]
+# Normalize localhost origins (add both http://localhost:3000 and http://127.0.0.1:3000 if one is present)
+if cors_origins != ["*"]:
+    normalized_origins = []
+    for origin in cors_origins:
+        normalized_origins.append(origin)
+        if origin.startswith("http://localhost"):
+            # Also allow 127.0.0.1 version
+            normalized_origins.append(origin.replace("localhost", "127.0.0.1"))
+        elif origin.startswith("http://127.0.0.1"):
+            # Also allow localhost version
+            normalized_origins.append(origin.replace("127.0.0.1", "localhost"))
+    cors_origins = list(set(normalized_origins))  # Remove duplicates
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.allowed_origins if settings.allowed_origins else ["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
@@ -202,6 +217,43 @@ async def shutdown_event():
 
 # Health check is now handled by health_router
 # Keeping this for backward compatibility but it will be overridden by the router
+
+
+@app.options("/{full_path:path}")
+async def options_handler(request: Request, full_path: str):
+    """Handle all OPTIONS preflight requests - catch-all before other routes"""
+    # Return empty response with status 200 and CORS headers
+    # This ensures OPTIONS always works even if CORSMiddleware has issues
+    from fastapi.responses import Response
+    origin = request.headers.get("origin", "")
+    logger.debug("OPTIONS handler called", path=full_path, origin=origin)
+    
+    response = Response(status_code=200)
+    
+    # Always add CORS headers for localhost and Vercel origins
+    if origin:
+        # Check if origin should be allowed
+        should_allow = False
+        
+        # Check against normalized allowed origins
+        if cors_origins and ("*" in cors_origins or origin in cors_origins):
+            should_allow = True
+        elif "vercel.app" in origin:
+            # Always allow Vercel preview URLs
+            should_allow = True
+        elif "localhost" in origin or "127.0.0.1" in origin:
+            # Always allow localhost for development
+            should_allow = True
+        
+        if should_allow:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+            response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept, X-Requested-With"
+            response.headers["Access-Control-Max-Age"] = "600"
+            logger.debug("CORS headers added to OPTIONS response", origin=origin)
+    
+    return response
 
 
 @app.get("/")

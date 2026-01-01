@@ -115,15 +115,17 @@ if cors_origins != ["*"]:
             normalized_origins.append(origin.replace("127.0.0.1", "localhost"))
     cors_origins = list(set(normalized_origins))  # Remove duplicates
 
+# CORS middleware - must be first to handle preflight
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
+    allow_origins=cors_origins if cors_origins != ["*"] else ["http://localhost:3000", "http://127.0.0.1:3000"],  # Explicit origins for better debugging
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
+    expose_headers=["*"],  # Expose all headers to frontend
 )
 
-# Security headers middleware (adds CORS for Vercel preview URLs)
+# Security headers middleware (adds CORS headers as fallback/override for localhost/Vercel)
 app.add_middleware(SecurityHeadersMiddleware)
 
 # Register exception handlers
@@ -184,8 +186,10 @@ async def startup_event():
         logger.warning(
             "AI model initialization failed",
             error=str(e),
-            provider=settings.primary_ai_provider
+            provider=settings.primary_ai_provider,
+            exc_info=True
         )
+        # Don't fail startup if AI provider fails - it's not critical for basic operations
     
     # Start scheduler for automatic follow-up emails
     try:
@@ -245,6 +249,11 @@ async def options_handler(request: Request, full_path: str):
             should_allow = True
         elif "localhost" in origin or "127.0.0.1" in origin:
             # Always allow localhost for development
+            should_allow = True
+        elif (origin.startswith("http://192.168.") or 
+              origin.startswith("http://172.") or 
+              origin.startswith("http://10.")):
+            # Always allow local network IPs for development (access from other devices on same network)
             should_allow = True
         
         if should_allow:
@@ -306,10 +315,14 @@ app.include_router(subscriptions_router)  # Subscription management
 
 if __name__ == "__main__":
     import uvicorn
+    # Use 127.0.0.1 instead of 0.0.0.0 to avoid IPv6 issues
+    # Keep reload for development but be aware it can interrupt requests
     uvicorn.run(
         "app.main:app",
-        host="0.0.0.0",
+        host="127.0.0.1",  # Changed from 0.0.0.0 to avoid IPv6 resolution issues
         port=8000,
-        reload=settings.app_debug
+        reload=settings.app_debug,
+        reload_delay=0.25,  # Small delay to reduce request interruption
+        log_level="info"
     )
 

@@ -29,7 +29,8 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_resource ON audit_logs(resource_type, 
 CREATE INDEX IF NOT EXISTS idx_audit_logs_action_type ON audit_logs(action_type);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user_resource ON audit_logs(user_id, resource_type, resource_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at_date ON audit_logs(DATE(created_at));
+-- Note: Date-based index removed - can query by date range using created_at index instead
+-- If needed for date-only queries, use: CREATE INDEX idx_audit_logs_date ON audit_logs((created_at::date));
 
 -- Enable RLS
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;

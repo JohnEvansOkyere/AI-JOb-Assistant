@@ -83,6 +83,15 @@ export class ApiClient {
       // Create timeout promise
       const timeoutPromise = this.createTimeoutPromise(this.timeout)
 
+      // Log request attempt (only in dev)
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`📤 API Request attempt ${attempt + 1}: ${options.method || 'GET'} ${endpoint}`, {
+          url,
+          hasToken: !!this.token,
+          bodySize: options.body ? (typeof options.body === 'string' ? options.body.length : 'FormData') : 0
+        })
+      }
+      
       // Create fetch promise with credentials
       // credentials: 'include' is required when backend has allow_credentials=True
       const fetchPromise = fetch(url, {
@@ -91,11 +100,13 @@ export class ApiClient {
         credentials: 'include',
       }).catch((fetchError) => {
         // Wrap fetch errors to provide more context
-        console.error('Fetch error:', {
+        console.error('❌ Fetch error (before response):', {
           url,
+          method: options.method || 'GET',
           error: fetchError,
           message: fetchError?.message,
           name: fetchError?.name,
+          stack: fetchError?.stack,
         })
         // Re-throw with more context
         const enhancedError = new Error(
@@ -107,6 +118,14 @@ export class ApiClient {
 
       // Race between fetch and timeout
       const response = await Promise.race([fetchPromise, timeoutPromise])
+      
+      // Log successful requests for debugging (only in dev)
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ API Request successful: ${options.method || 'GET'} ${endpoint}`, {
+          status: response.status,
+          ok: response.ok
+        })
+      }
 
       if (!response.ok) {
         let error: any
@@ -159,20 +178,35 @@ export class ApiClient {
       // Handle network errors
       if (error?.message?.includes('Failed to fetch') || 
           error?.message?.includes('NetworkError') ||
-          (error?.name === 'TypeError' && error?.message?.includes('fetch'))) {
+          (error?.name === 'TypeError' && error?.message?.includes('fetch')) ||
+          error?.message?.includes('Network error')) {
         
         // Log detailed error for debugging
-        console.error('Network error details:', {
+        console.error('❌ Network error details:', {
           url,
           endpoint,
+          method: options.method || 'GET',
           attempt,
           errorMessage: error?.message,
           errorName: error?.name,
+          errorStack: error?.stack,
+          // Check if OPTIONS succeeded but POST failed (CORS issue)
+          possibleCorsIssue: endpoint.includes('/auth/') ? 'OPTIONS may have succeeded, but actual request failed' : null
         })
+        
+        // Special handling for authentication endpoints - they might have CORS issues
+        if (endpoint.includes('/auth/') && attempt === 0) {
+          console.warn('⚠️ Authentication request failed. Common causes:')
+          console.warn('  1. CORS: OPTIONS preflight succeeded but POST failed')
+          console.warn('  2. Backend reloaded during request')
+          console.warn('  3. Backend not running or not accessible')
+          console.warn('  → Check backend terminal for errors')
+          console.warn('  → Try: curl http://127.0.0.1:8000/health')
+        }
         
         if (attempt < this.maxRetries) {
           const delay = ApiErrorHandler.getRetryDelay(attempt, this.retryDelay)
-          console.log(`Network error, retrying in ${delay}ms (attempt ${attempt + 1}/${this.maxRetries})...`)
+          console.log(`🔄 Network error, retrying in ${delay}ms (attempt ${attempt + 1}/${this.maxRetries})...`)
           
           await new Promise(resolve => setTimeout(resolve, delay))
           return this.requestWithRetry<T>(endpoint, options, attempt + 1)
@@ -181,7 +215,8 @@ export class ApiClient {
         // Provide more helpful error message with troubleshooting info
         const errorMsg = `Network error: Unable to connect to ${url}. ` +
           `This might be a CORS issue or the server might be unreachable. ` +
-          `Please check your internet connection and ensure the backend server is running.`
+          `Please check your internet connection and ensure the backend server is running. ` +
+          `(Method: ${options.method || 'GET'}, Endpoint: ${endpoint})`
         throw new Error(errorMsg)
       }
 

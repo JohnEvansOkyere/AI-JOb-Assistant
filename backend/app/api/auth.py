@@ -162,6 +162,14 @@ async def login(request: Request, credentials: UserLogin):
     Returns:
         Access token
     """
+    # Log login attempt for debugging CORS/connection issues
+    logger.info(
+        "Login attempt received",
+        email=credentials.email,
+        method=request.method,
+        origin=request.headers.get("origin"),
+        user_agent=request.headers.get("user-agent")[:100] if request.headers.get("user-agent") else None
+    )
     try:
         # Authenticate with Supabase
         auth_response = db.client.auth.sign_in_with_password({

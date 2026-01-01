@@ -26,9 +26,17 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if request.method == "OPTIONS":
             response = Response(status_code=200)
             
-            # Always allow OPTIONS from localhost or Vercel
+            # Always allow OPTIONS from localhost, local network IPs, or Vercel
             if origin:
-                if "localhost" in origin or "127.0.0.1" in origin or "vercel.app" in origin:
+                is_local_origin = (
+                    "localhost" in origin or 
+                    "127.0.0.1" in origin or 
+                    origin.startswith("http://192.168.") or  # Local network IPs
+                    origin.startswith("http://172.") or      # Docker/local network IPs
+                    origin.startswith("http://10.") or       # Local network IPs
+                    "vercel.app" in origin
+                )
+                if is_local_origin:
                     response.headers["Access-Control-Allow-Origin"] = origin
                     response.headers["Access-Control-Allow-Credentials"] = "true"
                     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
@@ -41,15 +49,24 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         
         response = await call_next(request)
         
-        # Add CORS headers if not already set by CORSMiddleware (fallback for localhost and Vercel)
+        # ALWAYS add CORS headers for localhost/Vercel/local network origins (ensure they're set on all responses)
         if origin:
-            if "Access-Control-Allow-Origin" not in response.headers:
-                # Check if origin should be allowed (localhost, 127.0.0.1, or Vercel)
-                if "localhost" in origin or "127.0.0.1" in origin or "vercel.app" in origin:
-                    response.headers["Access-Control-Allow-Origin"] = origin
-                    response.headers["Access-Control-Allow-Credentials"] = "true"
-                    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-                    response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept, X-Requested-With"
+            # Allow localhost, 127.0.0.1, local network IPs (192.168.x.x, 172.x.x.x, 10.x.x.x), or Vercel
+            is_local_origin = (
+                "localhost" in origin or 
+                "127.0.0.1" in origin or 
+                origin.startswith("http://192.168.") or  # Local network IPs
+                origin.startswith("http://172.") or      # Docker/local network IPs (like 172.20.10.3)
+                origin.startswith("http://10.") or       # Local network IPs
+                "vercel.app" in origin
+            )
+            if is_local_origin:
+                # Set CORS headers explicitly - don't rely on CORSMiddleware alone
+                response.headers["Access-Control-Allow-Origin"] = origin
+                response.headers["Access-Control-Allow-Credentials"] = "true"
+                response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+                response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept, X-Requested-With"
+                logger.debug("CORS headers added to response", origin=origin, path=request.url.path, method=request.method)
         
         # Security headers
         response.headers["X-Content-Type-Options"] = "nosniff"

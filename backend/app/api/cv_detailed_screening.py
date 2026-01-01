@@ -115,6 +115,7 @@ async def run_detailed_analysis(
 @router.get("/result/{application_id}")
 async def get_detailed_screening_result(
     application_id: UUID,
+    request: Request,
     current_user: dict = Depends(get_current_user)
 ):
     """
@@ -123,13 +124,13 @@ async def get_detailed_screening_result(
     try:
         # Get result with authorization check
         result = db.service_client.table("cv_detailed_screening").select(
-            "*, job_applications!inner(job_description_id, job_descriptions!inner(recruiter_id))"
+            "*, job_applications!inner(job_description_id, candidate_id, job_descriptions!inner(recruiter_id))"
         ).eq("application_id", str(application_id)).execute()
         
         if not result.data:
             # Check if application exists
             app_check = db.service_client.table("job_applications").select(
-                "id, job_descriptions!inner(recruiter_id)"
+                "id, candidate_id, job_descriptions!inner(recruiter_id)"
             ).eq("id", str(application_id)).execute()
             
             if not app_check.data:
@@ -149,6 +150,20 @@ async def get_detailed_screening_result(
         # Verify authorization
         if screening_data.get('job_applications', {}).get('job_descriptions', {}).get('recruiter_id') != current_user['id']:
             raise HTTPException(status_code=403, detail="Not authorized")
+        
+        app_data = screening_data.get('job_applications', {})
+        candidate_id = app_data.get('candidate_id')
+        
+        # Log report view for audit trail
+        from app.services.audit_service import AuditService
+        await AuditService.log_report_view(
+            user_id=UUID(current_user["id"]),
+            report_type="detailed_cv_analysis",
+            report_id=screening_data.get("id"),
+            candidate_id=UUID(candidate_id) if candidate_id else None,
+            application_id=application_id,
+            request=request
+        )
         
         # Remove nested auth data
         if 'job_applications' in screening_data:

@@ -3,12 +3,13 @@ Candidates API Routes
 Manage candidates
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from typing import Optional, List
 from uuid import UUID
 from app.schemas.common import Response
 from app.utils.auth import get_current_user_id
 from app.database import db
+from app.services.audit_service import AuditService
 import structlog
 
 logger = structlog.get_logger()
@@ -209,6 +210,7 @@ async def list_candidates(
 @router.get("/{candidate_id}", response_model=Response[dict])
 async def get_candidate(
     candidate_id: UUID,
+    request: Request,
     recruiter_id: UUID = Depends(get_current_user_id)
 ):
     """
@@ -216,6 +218,7 @@ async def get_candidate(
     
     Args:
         candidate_id: Candidate ID
+        request: FastAPI request object (for audit logging)
         recruiter_id: Current user ID
     
     Returns:
@@ -250,6 +253,13 @@ async def get_candidate(
         applications = db.service_client.table("job_applications").select(
             "*, job_descriptions(id, title, description), cv_screening_results(*), cvs(*)"
         ).eq("candidate_id", str(candidate_id)).in_("job_description_id", job_ids).order("applied_at", desc=True).execute()
+        
+        # Log candidate view for audit trail
+        await AuditService.log_candidate_view(
+            user_id=recruiter_id,
+            candidate_id=candidate_id,
+            request=request
+        )
         
         return Response(
             success=True,

@@ -85,6 +85,19 @@ async def create_ticket(
             interview_mode=interview_mode  # Will inherit from job if None
         )
         
+        # Log ticket issuance for audit trail
+        from app.services.audit_service import AuditService
+        from fastapi import Request as FastAPIRequest
+        # Note: request object not directly available in this endpoint signature
+        # We'll log without IP/user_agent for now (can be enhanced later)
+        await AuditService.log_ticket_issuance(
+            user_id=recruiter_id,
+            ticket_id=UUID(ticket["id"]),
+            candidate_id=candidate_id,
+            job_id=job_description_id,
+            request=None  # Can be added if Request is added to endpoint signature
+        )
+        
         # Automatically send interview invitation email if requested
         if send_email:
             background_tasks.add_task(

@@ -1178,6 +1178,7 @@ async def get_screening_result(
 async def update_application_status(
     application_id: UUID,
     status: str = Query(..., description="New status"),
+    request: Request = None,
     recruiter_id: UUID = Depends(get_current_user_id)
 ):
     """
@@ -1192,11 +1193,28 @@ async def update_application_status(
         Updated application
     """
     try:
+        # Get current application to capture old status
+        current_app_response = db.service_client.table("job_applications").select("status").eq("id", str(application_id)).execute()
+        old_status = current_app_response.data[0].get("status") if current_app_response.data else None
+        
         application = await ApplicationService.update_application_status(
             application_id=application_id,
             status=status,
             recruiter_id=recruiter_id
         )
+        
+        # Log status change for audit trail
+        from app.services.audit_service import AuditService
+        await AuditService.log_status_change(
+            user_id=recruiter_id,
+            resource_type="application",
+            resource_id=application_id,
+            old_status=old_status,
+            new_status=status,
+            reason=None,
+            request=request
+        )
+        
         return Response(
             success=True,
             message="Application status updated successfully",

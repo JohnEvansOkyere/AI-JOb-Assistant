@@ -643,6 +643,65 @@ async def get_admin_logs(
         )
 
 
+@router.get("/audit-logs", response_model=Response[list])
+async def get_audit_logs(
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    user_id: Optional[str] = Query(None, description="Filter by user ID"),
+    resource_type: Optional[str] = Query(None, description="Filter by resource type (candidate, interview, report, etc.)"),
+    resource_id: Optional[str] = Query(None, description="Filter by resource ID"),
+    action_type: Optional[str] = Query(None, description="Filter by action type (view, create, update, status_change, etc.)"),
+    admin_user: dict = Depends(get_current_admin)
+):
+    """Get comprehensive audit logs (all user actions)"""
+    try:
+        from app.services.audit_service import AuditService
+        from uuid import UUID
+        
+        audit_user_id = UUID(user_id) if user_id else None
+        
+        logs = await AuditService.get_audit_logs(
+            user_id=audit_user_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            action_type=action_type,
+            limit=limit,
+            offset=offset
+        )
+        
+        # Get user names for display
+        user_ids = list(set(log.get("user_id") for log in logs if log.get("user_id")))
+        if user_ids:
+            users_response = (
+                db.service_client.table("users")
+                .select("id, email, full_name")
+                .in_("id", user_ids)
+                .execute()
+            )
+            users_map = {u["id"]: u for u in (users_response.data or [])}
+            
+            # Add user info to logs
+            for log in logs:
+                user_id = log.get("user_id")
+                if user_id and user_id in users_map:
+                    log["user"] = {
+                        "email": users_map[user_id].get("email"),
+                        "full_name": users_map[user_id].get("full_name")
+                    }
+        
+        return Response(
+            success=True,
+            message=f"Found {len(logs)} audit logs",
+            data=logs
+        )
+    except Exception as e:
+        logger.error("Error fetching audit logs", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch audit logs: {str(e)}"
+        )
+
+
 @router.get("/subscriptions", response_model=Response[list])
 async def list_subscriptions(
     limit: int = Query(100, ge=1, le=1000),

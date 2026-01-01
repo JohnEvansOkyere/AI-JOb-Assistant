@@ -3,7 +3,7 @@ Interview API Routes
 Handles interview management and operations
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Body, Request
 from typing import Optional
 from uuid import UUID
 from app.schemas.common import Response
@@ -76,9 +76,26 @@ async def update_interview_job_status(
                 detail="You don't have permission to update this interview"
             )
         
+        old_status = interview.get("job_status")
+        
         # Update interview job_status
         update_data = InterviewUpdate(job_status=job_status)
         updated_interview = await InterviewService.update_interview(interview_id, update_data)
+        
+        # Log status change for audit trail
+        from app.services.audit_service import AuditService
+        from fastapi import Request as FastAPIRequest
+        request_obj = None  # Request not in signature, but can be added later
+        
+        await AuditService.log_status_change(
+            user_id=recruiter_id,
+            resource_type="interview",
+            resource_id=interview_id,
+            old_status=old_status,
+            new_status=job_status,
+            reason=None,
+            request=request_obj
+        )
         
         logger.info(
             "Interview job status updated",

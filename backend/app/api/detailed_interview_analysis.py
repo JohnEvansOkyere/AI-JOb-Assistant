@@ -97,6 +97,7 @@ async def analyze_interview(
 @router.get("/result/{interview_id}")
 async def get_interview_analysis(
     interview_id: UUID,
+    request: Request,
     current_user: dict = Depends(get_current_user)
 ):
     """
@@ -104,6 +105,7 @@ async def get_interview_analysis(
     
     Args:
         interview_id: ID of the interview
+        request: FastAPI request object (for audit logging)
         current_user: Authenticated recruiter
     
     Returns:
@@ -131,6 +133,8 @@ async def get_interview_analysis(
                 detail="Not authorized to view this analysis"
             )
         
+        interview_data = interview.data[0]
+        
         # Get analysis
         analyzer = DetailedInterviewAnalyzer()
         analysis = await analyzer.get_analysis(interview_id)
@@ -140,6 +144,18 @@ async def get_interview_analysis(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Analysis not found. Run /analyze first."
             )
+        
+        # Log report view for audit trail
+        from uuid import UUID
+        from app.services.audit_service import AuditService
+        await AuditService.log_report_view(
+            user_id=UUID(current_user["id"]),
+            report_type="interview_analysis",
+            report_id=interview_id,
+            candidate_id=UUID(interview_data["candidate_id"]) if interview_data.get("candidate_id") else None,
+            interview_id=interview_id,
+            request=request
+        )
         
         return Response(
             success=True,

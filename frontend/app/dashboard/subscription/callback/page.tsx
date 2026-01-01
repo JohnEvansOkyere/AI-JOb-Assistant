@@ -5,14 +5,14 @@
 
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { apiClient } from '@/lib/api/client'
 import { CheckCircle, XCircle, Loader } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 
-export default function PaymentCallbackPage() {
+function PaymentCallbackContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const reference = searchParams.get('reference') || searchParams.get('trxref')
@@ -112,6 +112,22 @@ export default function PaymentCallbackPage() {
         )}
       </Card>
     </div>
+  )
+}
+
+export default function PaymentCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <Card className="max-w-md w-full p-8 text-center">
+          <Loader className="h-16 w-16 animate-spin text-turquoise-600 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Loading...</h2>
+          <p className="text-gray-600">Preparing payment verification...</p>
+        </Card>
+      </div>
+    }>
+      <PaymentCallbackContent />
+    </Suspense>
   )
 }
 

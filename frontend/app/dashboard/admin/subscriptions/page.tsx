@@ -240,26 +240,22 @@ export default function AdminSubscriptionsPage() {
             <StatCard
               title="Total Subscriptions"
               value={stats.total_subscriptions.toString()}
-              icon={CreditCard}
-              trend={null}
+              icon={<CreditCard className="w-6 h-6" />}
             />
             <StatCard
               title="Active Subscriptions"
               value={stats.active_subscriptions.toString()}
-              icon={CheckCircle}
-              trend={null}
+              icon={<CheckCircle className="w-6 h-6" />}
             />
             <StatCard
               title="Monthly Recurring Revenue"
               value={formatCurrency(stats.monthly_recurring_revenue_usd)}
-              icon={DollarSign}
-              trend={null}
+              icon={<DollarSign className="w-6 h-6" />}
             />
             <StatCard
               title="Trial Conversion Rate"
               value={`${stats.trial_conversion_rate.toFixed(1)}%`}
-              icon={TrendingUp}
-              trend={null}
+              icon={<TrendingUp className="w-6 h-6" />}
             />
           </div>
         )}
@@ -380,9 +376,9 @@ export default function AdminSubscriptionsPage() {
             <BarChart
               data={Object.entries(stats.plan_distribution).map(([plan, count]) => ({
                 label: plan.charAt(0).toUpperCase() + plan.slice(1),
-                value: count
+                value: count,
+                color: "#20B2AA"
               }))}
-              color="#20B2AA"
             />
           </Card>
         )}

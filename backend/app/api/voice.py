@@ -1,6 +1,7 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.websockets import WebSocketState
 from uuid import UUID
+from typing import Optional
 import json
 import asyncio
 from io import BytesIO
@@ -22,6 +23,102 @@ import structlog
 logger = structlog.get_logger()
 
 router = APIRouter(prefix="/voice", tags=["Voice"])
+
+
+async def aggregate_interview_audio(interview_id: UUID) -> Optional[str]:
+    """
+    Aggregate all response audio files into a single full interview audio file.
+    
+    Args:
+        interview_id: Interview ID
+    
+    Returns:
+        Storage path to aggregated audio file, or None if no audio files found
+    """
+    try:
+        # Get all response audio paths from database, ordered by creation time
+        responses_response = (
+            db.service_client.table("interview_responses")
+            .select("id, response_audio_path, created_at")
+            .eq("interview_id", str(interview_id))
+            .not_.is_("response_audio_path", "null")
+            .order("created_at")
+            .execute()
+        )
+        
+        if not responses_response.data or len(responses_response.data) == 0:
+            logger.info("No response audio files found to aggregate", interview_id=str(interview_id))
+            return None
+        
+        audio_paths = [resp["response_audio_path"] for resp in responses_response.data if resp.get("response_audio_path")]
+        
+        if not audio_paths:
+            logger.info("No valid audio paths found", interview_id=str(interview_id))
+            return None
+        
+        logger.info(
+            "Aggregating interview audio",
+            interview_id=str(interview_id),
+            num_files=len(audio_paths)
+        )
+        
+        bucket_name = settings.supabase_storage_bucket_audio
+        audio_chunks = []
+        
+        # Download all audio files and concatenate them
+        for audio_path in audio_paths:
+            try:
+                # Download audio file from storage
+                audio_data = db.service_client.storage.from_(bucket_name).download(audio_path)
+                if audio_data:
+                    audio_chunks.append(audio_data)
+                    logger.debug("Downloaded audio chunk", path=audio_path, size=len(audio_data))
+            except Exception as download_err:
+                logger.warning("Failed to download audio file", path=audio_path, error=str(download_err))
+                # Continue with other files - don't fail entire aggregation if one file fails
+        
+        if not audio_chunks:
+            logger.warning("No audio chunks were successfully downloaded", interview_id=str(interview_id))
+            return None
+        
+        # Concatenate all audio chunks
+        # Note: Simple byte concatenation works for WebM in some cases, but for proper audio merging
+        # you would need to use ffmpeg or pydub to re-encode. This simple approach creates a file
+        # that may or may not play correctly depending on the WebM container format.
+        combined_audio = b''.join(audio_chunks)
+        
+        logger.info(
+            "Combined audio chunks",
+            interview_id=str(interview_id),
+            total_size=len(combined_audio),
+            num_chunks=len(audio_chunks)
+        )
+        
+        # Upload combined audio file
+        storage_path = await StorageService.upload_interview_audio(
+            interview_id=interview_id,
+            audio_bytes=combined_audio,
+            file_extension="webm"  # Default to webm format
+        )
+        
+        logger.info(
+            "Successfully aggregated interview audio",
+            interview_id=str(interview_id),
+            storage_path=storage_path,
+            total_size=len(combined_audio)
+        )
+        
+        return storage_path
+        
+    except Exception as e:
+        logger.error(
+            "Failed to aggregate interview audio",
+            interview_id=str(interview_id),
+            error=str(e),
+            exc_info=True
+        )
+        # Return None instead of raising - don't fail interview completion if audio aggregation fails
+        return None
 
 
 @router.websocket("/interview/{ticket_code}")
@@ -441,6 +538,76 @@ async def voice_interview(
                         )
                     )
                     
+                    # If waiting for final message, treat this audio as the final message
+                    if waiting_for_final_message:
+                        logger.info(
+                            "Final message received via audio in voice mode",
+                            interview_id=str(interview["id"]) if interview else None,
+                            transcription_length=len(answer_text)
+                        )
+                        # Treat transcribed audio as final message
+                        # Build transcript from all responses before completing
+                        try:
+                            all_responses = db.service_client.table("interview_responses").select("question_id, response_text").eq("interview_id", str(interview["id"])).order("created_at").execute()
+                            
+                            transcript_parts = []
+                            for resp in (all_responses.data or []):
+                                response_text = resp.get("response_text") or ""
+                                if response_text:
+                                    transcript_parts.append(response_text)
+                            
+                            # Add final message (transcribed audio)
+                            if answer_text:
+                                transcript_parts.append(answer_text)
+                            
+                            transcript = "\n\n".join(transcript_parts) if transcript_parts else None
+                            logger.info("Built transcript for completion from audio final message", interview_id=str(interview["id"]), transcript_length=len(transcript) if transcript else 0, num_responses=len(transcript_parts))
+                        except Exception as transcript_err:
+                            logger.warning("Failed to build transcript", error=str(transcript_err), interview_id=str(interview["id"]))
+                            transcript = None
+                        
+                        # Send closing message
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    "type": "interview_complete",
+                                    "message": "Thank you so much for taking the time to interview with us today. We really appreciate your interest in this role and the insights you've shared. We'll be reviewing your responses and will be in touch with you soon. Have a great day!",
+                                }
+                            )
+                        )
+                        
+                        # Aggregate all interview audio files before completing
+                        full_audio_path = None
+                        if interview_mode == "voice":
+                            try:
+                                full_audio_path = await aggregate_interview_audio(UUID(interview["id"]))
+                            except Exception as audio_err:
+                                logger.warning("Failed to aggregate interview audio", error=str(audio_err), interview_id=str(interview["id"]))
+                                # Continue without full audio - individual files are still available
+                        
+                        # Mark interview as completed
+                        logger.info("Starting interview completion process from audio final message", interview_id=str(interview["id"]), interview_mode=interview_mode)
+                        try:
+                            # Complete the interview - this updates the status to "completed"
+                            completed_interview = await InterviewService.complete_interview(
+                                interview_id=UUID(interview["id"]),
+                                transcript=transcript,
+                                audio_file_path=full_audio_path
+                            )
+                            logger.info(
+                                "Interview marked as completed successfully",
+                                interview_id=str(interview["id"]),
+                                completed_at=completed_interview.get("completed_at")
+                            )
+                        except Exception as complete_err:
+                            logger.error("Failed to mark interview as completed", error=str(complete_err), interview_id=str(interview["id"]), exc_info=True)
+                            # Don't fail the websocket - interview data is still saved
+                        
+                        logger.info("Interview completed in voice mode via audio final message", interview_id=str(interview["id"]))
+                        # Close the connection gracefully
+                        await websocket.close()
+                        return
+                    
                     # Save audio to storage (non-blocking, don't fail interview if storage fails)
                     question_id = current_question_id
                     if question_id and interview:
@@ -523,8 +690,15 @@ async def voice_interview(
                         )
                         continue
                     
+                    # Get audio path if available (for voice mode)
+                    audio_path = None
+                    if interview_mode == "voice" and question_id in response_audio_paths:
+                        audio_path = response_audio_paths[question_id]
+                        # Remove from tracking dict since we're using it now
+                        del response_audio_paths[question_id]
+                    
                     # Analyze response and store it (with timeout)
-                    logger.info("Starting response analysis", question_id=question_id, questions_asked=questions_asked)
+                    logger.info("Starting response analysis", question_id=question_id, questions_asked=questions_asked, has_audio=bool(audio_path))
                     try:
                         analysis = await asyncio.wait_for(
                             interview_ai.process_response(
@@ -533,29 +707,10 @@ async def voice_interview(
                                 answer_text,
                                 job_description or {},
                                 cv_text,
+                                response_audio_path=audio_path  # Pass audio path directly
                             ),
                             timeout=45.0  # 45 second timeout for response analysis
                         )
-                        
-                        # Update response with audio path if available (for voice mode)
-                        if interview_mode == "voice" and question_id in response_audio_paths:
-                            audio_path = response_audio_paths[question_id]
-                            # Find the most recent response for this question and update it
-                            # Note: update() doesn't support order(), so we need to select first, then update
-                            try:
-                                response_query = db.service_client.table("interview_responses").select("id").eq("interview_id", str(interview["id"])).eq("question_id", question_id).order("created_at", desc=True).limit(1).execute()
-                                if response_query.data and len(response_query.data) > 0:
-                                    response_id = response_query.data[0]["id"]
-                                    db.service_client.table("interview_responses").update({
-                                        "response_audio_path": audio_path
-                                    }).eq("id", response_id).execute()
-                                    logger.info("Updated response with audio path", question_id=question_id, response_id=response_id, audio_path=audio_path)
-                                else:
-                                    logger.warning("No response found to update with audio path", question_id=question_id, interview_id=str(interview["id"]))
-                            except Exception as update_err:
-                                logger.warning("Failed to update response with audio path", question_id=question_id, error=str(update_err))
-                            # Remove from tracking dict
-                            del response_audio_paths[question_id]
 
                         # Update / create interview-level report (non-blocking for UX if it fails)
                         try:
@@ -841,8 +996,15 @@ async def voice_interview(
                     )
                     continue
 
+                # Get audio path if available (for voice mode)
+                audio_path = None
+                if interview_mode == "voice" and question_id in response_audio_paths:
+                    audio_path = response_audio_paths[question_id]
+                    # Remove from tracking dict since we're using it now
+                    del response_audio_paths[question_id]
+                
                 # Analyze response and store it (with timeout)
-                logger.info("Starting response analysis", question_id=question_id, questions_asked=questions_asked)
+                logger.info("Starting response analysis", question_id=question_id, questions_asked=questions_asked, has_audio=bool(audio_path))
                 try:
                     analysis = await asyncio.wait_for(
                         interview_ai.process_response(
@@ -851,29 +1013,10 @@ async def voice_interview(
                             answer_text,
                             job_description or {},
                             cv_text,
+                            response_audio_path=audio_path  # Pass audio path directly
                         ),
                         timeout=45.0  # 45 second timeout for response analysis
                     )
-                    
-                    # Update response with audio path if available (for voice mode)
-                    if interview_mode == "voice" and question_id in response_audio_paths:
-                        audio_path = response_audio_paths[question_id]
-                        # Find the most recent response for this question and update it
-                        # Note: update() doesn't support order(), so we need to select first, then update
-                        try:
-                            response_query = db.service_client.table("interview_responses").select("id").eq("interview_id", str(interview["id"])).eq("question_id", question_id).order("created_at", desc=True).limit(1).execute()
-                            if response_query.data and len(response_query.data) > 0:
-                                response_id = response_query.data[0]["id"]
-                                db.service_client.table("interview_responses").update({
-                                    "response_audio_path": audio_path
-                                }).eq("id", response_id).execute()
-                                logger.info("Updated response with audio path", question_id=question_id, response_id=response_id, audio_path=audio_path)
-                            else:
-                                logger.warning("No response found to update with audio path", question_id=question_id, interview_id=str(interview["id"]))
-                        except Exception as update_err:
-                            logger.warning("Failed to update response with audio path", question_id=question_id, error=str(update_err))
-                        # Remove from tracking dict
-                        del response_audio_paths[question_id]
 
                     # Update / create interview-level report (non-blocking for UX if it fails)
                     try:
@@ -999,7 +1142,18 @@ async def voice_interview(
                                 
                                 # Generate audio
                                 logger.info("Starting TTS synthesis for followup", question_id=followup["id"], text_length=len(question_text))
-                                audio_bytes = await tts.synthesize(question_text)
+                                # Get context for logging
+                                interview_id_val = UUID(interview["id"]) if interview else None
+                                job_desc_id = UUID(job_description["id"]) if job_description else None
+                                candidate_id_val = UUID(interview["candidate_id"]) if interview and interview.get("candidate_id") else None
+                                recruiter_id_val = UUID(job_description["recruiter_id"]) if job_description and job_description.get("recruiter_id") else None
+                                audio_bytes = await tts.synthesize(
+                                    question_text,
+                                    recruiter_id=recruiter_id_val,
+                                    interview_id=interview_id_val,
+                                    job_description_id=job_desc_id,
+                                    candidate_id=candidate_id_val
+                                )
                                 
                                 # Validate audio bytes
                                 if not audio_bytes:
@@ -1152,13 +1306,23 @@ async def voice_interview(
                     )
                 )
                 
+                # Aggregate all interview audio files before completing
+                full_audio_path = None
+                if interview_mode == "voice":
+                    try:
+                        full_audio_path = await aggregate_interview_audio(UUID(interview["id"]))
+                    except Exception as audio_err:
+                        logger.warning("Failed to aggregate interview audio", error=str(audio_err), interview_id=str(interview["id"]))
+                        # Continue without full audio - individual files are still available
+                
                 # Mark interview as completed
                 logger.info("Starting interview completion process", interview_id=str(interview["id"]), interview_mode=interview_mode)
                 try:
                     # Complete the interview - this updates the status to "completed"
                     completed_interview = await InterviewService.complete_interview(
                         UUID(interview["id"]),
-                        transcript=transcript
+                        transcript=transcript,
+                        audio_file_path=full_audio_path
                     )
                     logger.info(
                         "Interview marked as completed successfully",

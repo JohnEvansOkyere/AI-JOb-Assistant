@@ -71,7 +71,14 @@ class ElevenLabsTTS:
             logger.error("Failed to initialize ElevenLabs", error=str(e))
             raise ValueError(f"Failed to initialize ElevenLabs: {str(e)}")
     
-    async def synthesize(self, text: str) -> bytes:
+    async def synthesize(
+        self,
+        text: str,
+        recruiter_id: Optional[UUID] = None,
+        interview_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None
+    ) -> bytes:
         """
         Convert text to speech audio using ElevenLabs API
         

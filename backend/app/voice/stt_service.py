@@ -64,7 +64,15 @@ class WhisperSTT:
             logger.error("Failed to initialize OpenAI client for Whisper", error=str(e))
             raise ValueError(f"Failed to initialize OpenAI client: {str(e)}")
     
-    async def transcribe_chunk(self, audio_bytes: bytes, language: Optional[str] = None) -> str:
+    async def transcribe_chunk(
+        self,
+        audio_bytes: bytes,
+        language: Optional[str] = None,
+        recruiter_id: Optional[UUID] = None,
+        interview_id: Optional[UUID] = None,
+        job_description_id: Optional[UUID] = None,
+        candidate_id: Optional[UUID] = None
+    ) -> str:
         """
         Transcribe audio bytes to text using OpenAI Whisper API
         

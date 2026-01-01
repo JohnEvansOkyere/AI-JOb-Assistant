@@ -133,7 +133,8 @@ class InterviewAIService:
         question_id: UUID,
         response_text: str,
         job_description: Dict[str, Any],
-        cv_text: str
+        cv_text: str,
+        response_audio_path: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Process candidate response and generate analysis
@@ -144,6 +145,7 @@ class InterviewAIService:
             response_text: Candidate's response
             job_description: Job description data
             cv_text: Candidate CV text
+            response_audio_path: Optional path to response audio file (for voice mode)
         
         Returns:
             Analysis dictionary
@@ -171,17 +173,18 @@ class InterviewAIService:
                 candidate_id=context.get("candidate_id")
             )
             
-            # Store response
+            # Store response with audio path if provided
             response_data = InterviewResponseCreate(
                 interview_id=interview_id,
                 question_id=question_id,
-                response_text=response_text
+                response_text=response_text,
+                response_audio_path=response_audio_path
             )
             db.service_client.table("interview_responses").insert(
                 response_data.model_dump(mode="json")
             ).execute()
             
-            logger.info("Processed response", interview_id=str(interview_id), question_id=str(question_id))
+            logger.info("Processed response", interview_id=str(interview_id), question_id=str(question_id), has_audio=bool(response_audio_path))
             return analysis
             
         except Exception as e:

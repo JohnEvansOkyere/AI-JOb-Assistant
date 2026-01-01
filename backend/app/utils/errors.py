@@ -52,6 +52,13 @@ class AppValidationError(AppException):
         super().__init__(message, status_code=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
 
+class ConflictError(AppException):
+    """Resource conflict exception (e.g., duplicate resource)"""
+    
+    def __init__(self, message: str = "Resource conflict"):
+        super().__init__(message, status_code=status.HTTP_409_CONFLICT)
+
+
 async def app_exception_handler(request: Request, exc: AppException):
     """Handle application exceptions"""
     logger.error(

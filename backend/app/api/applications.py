@@ -766,6 +766,23 @@ async def apply_for_job(
     except HTTPException:
         raise
     except Exception as e:
+        # Check if it's a ConflictError (duplicate application)
+        from app.utils.errors import ConflictError, AppException
+        if isinstance(e, ConflictError):
+            # Re-raise conflict errors as HTTPException with proper status code
+            logger.info("Duplicate application rejected", email=email, job_id=str(job_description_id), error=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(e.message) if hasattr(e, 'message') else str(e)
+            )
+        elif isinstance(e, AppException) and e.status_code == status.HTTP_409_CONFLICT:
+            # Handle AppException with 409 status
+            logger.info("Application conflict", email=email, job_id=str(job_description_id), error=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(e.message) if hasattr(e, 'message') else str(e)
+            )
+        
         logger.error("Error creating application", error=str(e), exc_info=True)
         # Provide more detailed error message
         error_detail = str(e)

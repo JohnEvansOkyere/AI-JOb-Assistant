@@ -9,7 +9,7 @@ from datetime import datetime
 from app.models.job_application import JobApplication, JobApplicationCreate, JobApplicationUpdate
 from app.models.candidate import Candidate, CandidateCreate
 from app.database import db
-from app.utils.errors import NotFoundError
+from app.utils.errors import NotFoundError, ConflictError
 from app.services.cv_service import CVService
 import structlog
 
@@ -60,6 +60,55 @@ class ApplicationService:
                 ).execute()
                 candidate_id = UUID(candidate_result.data[0]["id"])
             
+            # Check for duplicate application BEFORE uploading CV (to avoid wasting resources)
+            # Check if application already exists (UNIQUE constraint: job_description_id, candidate_id)
+            existing = db.service_client.table("job_applications").select("id, applied_at, status").eq(
+                "job_description_id", str(application_data.job_description_id)
+            ).eq("candidate_id", str(candidate_id)).execute()
+            
+            if existing.data:
+                existing_app = existing.data[0]
+                
+                # Get job title for better error message
+                try:
+                    job_response = db.service_client.table("job_descriptions").select("title").eq(
+                        "id", str(application_data.job_description_id)
+                    ).execute()
+                    job_title = job_response.data[0].get("title", "this position") if job_response.data else "this position"
+                except Exception:
+                    job_title = "this position"
+                
+                applied_date = existing_app.get("applied_at")
+                if applied_date:
+                    try:
+                        from datetime import datetime
+                        # Format date for display
+                        if isinstance(applied_date, str):
+                            dt = datetime.fromisoformat(applied_date.replace('Z', '+00:00'))
+                            formatted_date = dt.strftime("%B %d, %Y")
+                        else:
+                            formatted_date = str(applied_date)
+                    except Exception:
+                        formatted_date = "previously"
+                else:
+                    formatted_date = "previously"
+                
+                logger.info(
+                    "Duplicate application detected - rejecting",
+                    application_id=existing_app.get("id"),
+                    job_id=str(application_data.job_description_id),
+                    candidate_id=str(candidate_id),
+                    email=application_data.email,
+                    existing_applied_at=formatted_date
+                )
+                
+                # Raise conflict error with user-friendly message
+                raise ConflictError(
+                    f"You have already applied for {job_title} on {formatted_date}. "
+                    f"Each candidate can only submit one application per job posting."
+                )
+            
+            # No duplicate found - proceed with CV upload and application creation
             # Upload CV
             cv = await CVService.upload_cv(
                 candidate_id=candidate_id,
@@ -82,38 +131,6 @@ class ApplicationService:
             import uuid
             from datetime import datetime
             application_id = str(uuid.uuid4())
-            
-            # Check if application already exists (UNIQUE constraint: job_description_id, candidate_id)
-            # Fetch full record so API response validation has all required fields
-            existing = db.service_client.table("job_applications").select("*").eq(
-                "job_description_id", str(application_data.job_description_id)
-            ).eq("candidate_id", str(candidate_id)).execute()
-            
-            if existing.data:
-                record = existing.data[0]
-                
-                # Ensure timestamps exist for Pydantic response model
-                if "created_at" not in record or record.get("created_at") is None:
-                    logger.warning(
-                        "created_at missing from existing application record, setting explicitly",
-                        application_id=record.get("id"),
-                    )
-                    record["created_at"] = datetime.utcnow().isoformat()
-                
-                if "updated_at" not in record or record.get("updated_at") is None:
-                    logger.warning(
-                        "updated_at missing from existing application record, setting explicitly",
-                        application_id=record.get("id"),
-                    )
-                    record["updated_at"] = datetime.utcnow().isoformat()
-                
-                logger.info(
-                    "Application already exists, returning existing record",
-                    application_id=record.get("id"),
-                    job_id=str(application_data.job_description_id),
-                    candidate_id=str(candidate_id),
-                )
-                return record
             
             application_dict = {
                 "id": application_id,

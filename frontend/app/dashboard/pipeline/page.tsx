@@ -181,10 +181,109 @@ export default function PipelinePage() {
   }
 
   const loadAllCandidates = async () => {
-    // TODO: Load candidates from all jobs
-    setCandidates([])
-    setStages([])
-    setLoading(false)
+    try {
+      setLoading(true)
+      setError('')
+      const token = localStorage.getItem('auth_token')
+      if (token) {
+        apiClient.setToken(token)
+      }
+
+      // Get all applications across all jobs
+      const allApplicationsResponse = await apiClient.get<any[]>('/applications')
+      
+      if (!allApplicationsResponse.success || !allApplicationsResponse.data) {
+        setCandidates([])
+        setStages([])
+        return
+      }
+
+      const allApplications = allApplicationsResponse.data
+      
+      // Get unique job IDs and load stages for each job
+      const jobIds = [...new Set(allApplications.map(app => app.job_description_id).filter(Boolean))]
+      
+      // Load stages for all jobs and aggregate unique stages
+      const allStagesMap = new Map<number, Stage>()
+      
+      // Also collect candidates with their progress
+      const candidatesWithProgress = await Promise.all(
+        allApplications.map(async (app) => {
+          const jobId = app.job_description_id
+          if (!jobId) return null
+
+          try {
+            // Get job details for job title
+            const job = jobs.find(j => j.id === jobId)
+            
+            // Get stages for this job
+            try {
+              const stagesResponse = await apiClient.get<Stage[]>(`/interview-stages/jobs/${jobId}/stages`)
+              if (stagesResponse.success && stagesResponse.data) {
+                // Aggregate stages (use first job's stage definition for each stage number)
+                stagesResponse.data.forEach(stage => {
+                  if (!allStagesMap.has(stage.stage_number)) {
+                    allStagesMap.set(stage.stage_number, stage)
+                  }
+                })
+              }
+            } catch (err) {
+              // Job may not have stages configured yet
+            }
+
+            // Get progress for this candidate in this job
+            try {
+              const progressResponse = await apiClient.get<CandidateProgress>(
+                `/interview-stages/jobs/${jobId}/candidates/${app.candidate_id}/progress`
+              )
+              
+              if (progressResponse.success && progressResponse.data) {
+                const progress = progressResponse.data
+                
+                return {
+                  id: `${app.candidate_id}-${jobId}`, // Unique key for candidate-job pair
+                  candidate_id: app.candidate_id,
+                  full_name: app.candidates?.full_name || app.candidate_email || 'Unknown',
+                  email: app.candidates?.email || app.candidate_email || '',
+                  jobTitle: job?.title || 'Unknown Job',
+                  jobId: jobId,
+                  progress: progress,
+                  currentStage: allStagesMap.get(progress.current_stage_number || 1),
+                } as CandidateWithProgress & { candidate_id: string; jobId: string }
+              }
+            } catch (err) {
+              // No progress yet - candidate not started
+              return {
+                id: `${app.candidate_id}-${jobId}`,
+                candidate_id: app.candidate_id,
+                full_name: app.candidates?.full_name || app.candidate_email || 'Unknown',
+                email: app.candidates?.email || app.candidate_email || '',
+                jobTitle: job?.title || 'Unknown Job',
+                jobId: jobId,
+                progress: undefined,
+              } as CandidateWithProgress & { candidate_id: string; jobId: string }
+            }
+          } catch (err) {
+            console.error('Error processing candidate:', err)
+            return null
+          }
+        })
+      )
+
+      // Filter out nulls and set candidates
+      const validCandidates = candidatesWithProgress.filter((c): c is CandidateWithProgress & { candidate_id: string; jobId: string } => c !== null)
+      setCandidates(validCandidates)
+
+      // Convert stages map to sorted array
+      const aggregatedStages = Array.from(allStagesMap.values()).sort((a, b) => a.order_index - b.order_index)
+      setStages(aggregatedStages.length > 0 ? aggregatedStages : [])
+
+    } catch (err: any) {
+      console.error('Error loading all candidates:', err)
+      setError(ApiErrorHandler.getErrorMessage(err))
+    } finally {
+      setLoading(false)
+    }
   }
 
   const getCandidatesForStage = (stageNumber: number) => {
@@ -268,13 +367,111 @@ export default function PipelinePage() {
         )}
 
         {selectedJobId === 'all' ? (
-          <Card>
-            <div className="text-center py-12">
-              <p className="text-gray-600 dark:text-gray-400">
-                Select a job to view its interview pipeline
-              </p>
+          stages.length === 0 ? (
+            <Card>
+              <div className="text-center py-12">
+                <p className="text-gray-600 dark:text-gray-400 mb-4">
+                  No interview stages configured yet, or no candidates found.
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Configure interview stages for your jobs to view the pipeline.
+                </p>
+              </div>
+            </Card>
+          ) : (
+            <div className="overflow-x-auto">
+              <div className="flex gap-4 min-w-max pb-4">
+                {stages.map((stage) => {
+                  const stageCandidates = getCandidatesForStage(stage.stage_number)
+                  return (
+                    <div
+                      key={stage.id}
+                      className="flex-shrink-0 w-80"
+                    >
+                      <Card className={`${getStageColor(stage.stage_type)} border-2`}>
+                        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="font-semibold text-gray-900 dark:text-white">
+                              {stage.stage_name}
+                            </h3>
+                            <span className="text-xs px-2 py-1 rounded bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400">
+                              {stageCandidates.length}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs px-2 py-1 rounded ${
+                              stage.stage_type === 'ai'
+                                ? 'bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200'
+                                : 'bg-green-200 dark:bg-green-800 text-green-800 dark:text-green-200'
+                            }`}>
+                              {stage.stage_type === 'ai' ? 'AI Interview' : 'Human Interview'}
+                            </span>
+                            {stage.is_required && (
+                              <span className="text-xs text-gray-500 dark:text-gray-400">
+                                Required
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="p-4 space-y-3 max-h-[600px] overflow-y-auto">
+                          {stageCandidates.length === 0 ? (
+                            <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
+                              No candidates
+                            </p>
+                          ) : (
+                            stageCandidates.map((candidate) => {
+                              const candidateWithJob = candidate as CandidateWithProgress & { jobId?: string; candidate_id?: string }
+                              return (
+                                <div
+                                  key={candidate.id}
+                                  className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow cursor-pointer"
+                                  onClick={() => router.push(`/dashboard/candidates/${candidateWithJob.candidate_id || candidate.id}`)}
+                                >
+                                  <p className="font-medium text-gray-900 dark:text-white">
+                                    {candidate.full_name || 'Unknown'}
+                                  </p>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                    {candidate.email}
+                                  </p>
+                                  {/* Show job title in "all jobs" view */}
+                                  {candidateWithJob.jobTitle && (
+                                    <p className="text-xs text-turquoise-600 dark:text-turquoise-400 mt-1 font-medium">
+                                      {candidateWithJob.jobTitle}
+                                    </p>
+                                  )}
+                                  {candidate.progress && (
+                                    <div className="mt-2 flex items-center gap-2 flex-wrap">
+                                      {candidate.progress.completed_stages.length > 0 && (
+                                        <span className="text-xs text-green-600 dark:text-green-400">
+                                          ✓ {candidate.progress.completed_stages.length} completed
+                                        </span>
+                                      )}
+                                      {candidate.progress.status && (
+                                        <span className={`text-xs px-2 py-0.5 rounded ${
+                                          candidate.progress.status === 'rejected'
+                                            ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+                                            : candidate.progress.status === 'offer'
+                                            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                                            : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                                        }`}>
+                                          {candidate.progress.status}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })
+                          )}
+                        </div>
+                      </Card>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
-          </Card>
+          )
         ) : stages.length === 0 ? (
           <Card>
             <div className="text-center py-12">

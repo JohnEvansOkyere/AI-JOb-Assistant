@@ -159,7 +159,19 @@ class OpenAIProvider(AIProvider):
                 stream=True
             )
             
+            # Reset usage info
+            self._last_usage = None
+            
             for chunk in stream:
+                # OpenAI provides usage info in the final chunk (when stream ends)
+                if hasattr(chunk, 'usage') and chunk.usage:
+                    self._last_usage = {
+                        "prompt_tokens": chunk.usage.prompt_tokens,
+                        "completion_tokens": chunk.usage.completion_tokens,
+                        "total_tokens": chunk.usage.total_tokens
+                    }
+                
+                # Yield content chunks
                 if chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
         except Exception as e:
@@ -283,7 +295,19 @@ class GroqProvider(AIProvider):
                 stream=True
             )
             
+            # Reset usage info
+            self._last_usage = None
+            
             for chunk in stream:
+                # Groq provides usage info in the final chunk (when stream ends)
+                if hasattr(chunk, 'usage') and chunk.usage:
+                    self._last_usage = {
+                        "prompt_tokens": chunk.usage.prompt_tokens if hasattr(chunk.usage, 'prompt_tokens') else None,
+                        "completion_tokens": chunk.usage.completion_tokens if hasattr(chunk.usage, 'completion_tokens') else None,
+                        "total_tokens": chunk.usage.total_tokens if hasattr(chunk.usage, 'total_tokens') else None
+                    }
+                
+                # Yield content chunks
                 if chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
         except Exception as e:
@@ -391,7 +415,22 @@ class GeminiProvider(AIProvider):
                 stream=True
             )
             
+            # Reset usage info
+            self._last_usage = None
+            
             for chunk in response:
+                # Gemini may provide usage info in some chunks
+                # Check for usage_metadata (structure may vary by Gemini version)
+                if hasattr(chunk, 'usage_metadata') and chunk.usage_metadata:
+                    self._last_usage = {
+                        "prompt_tokens": chunk.usage_metadata.prompt_token_count if hasattr(chunk.usage_metadata, 'prompt_token_count') else None,
+                        "completion_tokens": chunk.usage_metadata.candidates_token_count if hasattr(chunk.usage_metadata, 'candidates_token_count') else None,
+                        "total_tokens": None
+                    }
+                    if self._last_usage["prompt_tokens"] and self._last_usage["completion_tokens"]:
+                        self._last_usage["total_tokens"] = self._last_usage["prompt_tokens"] + self._last_usage["completion_tokens"]
+                
+                # Yield text chunks
                 if chunk.text:
                     yield chunk.text
         except Exception as e:
@@ -506,7 +545,19 @@ class GrokProvider(AIProvider):
                 stream=True
             )
             
+            # Reset usage info
+            self._last_usage = None
+            
             for chunk in stream:
+                # Grok (x.ai) provides usage info in the final chunk (similar to OpenAI)
+                if hasattr(chunk, 'usage') and chunk.usage:
+                    self._last_usage = {
+                        "prompt_tokens": chunk.usage.prompt_tokens if hasattr(chunk.usage, 'prompt_tokens') else None,
+                        "completion_tokens": chunk.usage.completion_tokens if hasattr(chunk.usage, 'completion_tokens') else None,
+                        "total_tokens": chunk.usage.total_tokens if hasattr(chunk.usage, 'total_tokens') else None
+                    }
+                
+                # Yield content chunks
                 if chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
         except Exception as e:

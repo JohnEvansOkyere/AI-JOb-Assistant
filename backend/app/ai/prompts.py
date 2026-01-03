@@ -32,9 +32,18 @@ Guidelines:
 Remember: You're having a conversation, not just reading questions. Listen to what they say and respond accordingly."""
 
     @staticmethod
-    def get_warmup_prompt(job_description: Dict[str, Any], cv_text: str) -> str:
+    def get_warmup_prompt(job_description: Dict[str, Any], cv_text: str, cover_letter_text: Optional[str] = None) -> str:
         """Generate warmup question prompt"""
-        return f"""Based on the following job description and candidate CV, generate a warm, welcoming opening question (2-3 sentences) to start the interview.
+        cover_letter_section = ""
+        if cover_letter_text:
+            cover_letter_section = f"""
+Candidate Cover Letter:
+{cover_letter_text[:1000]}
+
+Use insights from the cover letter if relevant (e.g., their motivation, specific interests mentioned).
+"""
+        
+        return f"""Based on the following job description, candidate CV, and cover letter (if available), generate a warm, welcoming opening question (2-3 sentences) to start the interview.
 
 Job Description:
 Title: {job_description.get('title', 'N/A')}
@@ -42,13 +51,16 @@ Description: {job_description.get('description', 'N/A')}
 Requirements: {job_description.get('requirements', 'N/A')}
 
 Candidate CV:
-{cv_text[:2000]}  # Limit CV text to avoid token limits
+{cv_text[:2000]}
+
+{cover_letter_section}
 
 Generate a friendly opening question that:
 - Welcomes the candidate
 - Confirms their understanding of the role
 - Sets a professional but comfortable tone
-- Is based on information from the job description and CV
+- References their cover letter if relevant (shows you've reviewed their application)
+- Is based on information from the job description, CV, and cover letter
 
 Respond with ONLY the question text, no additional commentary."""
 
@@ -57,14 +69,24 @@ Respond with ONLY the question text, no additional commentary."""
         job_description: Dict[str, Any],
         cv_text: str,
         skill_category: str,
-        previous_questions: list = None
+        previous_questions: list = None,
+        cover_letter_text: Optional[str] = None
     ) -> str:
         """Generate skill assessment question"""
         previous_context = ""
         if previous_questions:
             previous_context = f"\n\nPreviously asked questions (avoid repetition):\n" + "\n".join(previous_questions[-3:])
         
-        return f"""Based on the job description and candidate CV, generate a technical/skill-based question about: {skill_category}
+        cover_letter_section = ""
+        if cover_letter_text:
+            cover_letter_section = f"""
+Candidate Cover Letter:
+{cover_letter_text[:1000]}
+
+Reference cover letter claims about this skill if mentioned.
+"""
+        
+        return f"""Based on the job description, candidate CV, and cover letter (if available), generate a technical/skill-based question about: {skill_category}
 
 Job Description:
 Title: {job_description.get('title', 'N/A')}
@@ -74,14 +96,17 @@ Requirements: {job_description.get('requirements', 'N/A')}
 Candidate CV:
 {cv_text[:2000]}
 
+{cover_letter_section}
+
 {previous_context}
 
 Generate a question that:
 - Tests the candidate's knowledge/experience in {skill_category}
 - Is relevant to the job requirements
-- Can be answered based on their CV or general knowledge
+- Validates claims made in CV or cover letter about this skill
+- Can be answered based on their CV, cover letter, or general knowledge
 - Is clear and specific
-- Follows up on their claimed experience if mentioned in CV
+- Follows up on their claimed experience if mentioned in CV or cover letter
 
 Respond with ONLY the question text, no additional commentary."""
 
@@ -89,14 +114,24 @@ Respond with ONLY the question text, no additional commentary."""
     def get_experience_question_prompt(
         job_description: Dict[str, Any],
         cv_text: str,
-        previous_questions: list = None
+        previous_questions: list = None,
+        cover_letter_text: Optional[str] = None
     ) -> str:
         """Generate experience validation question"""
         previous_context = ""
         if previous_questions:
             previous_context = f"\n\nPreviously asked questions (avoid repetition):\n" + "\n".join(previous_questions[-3:])
         
-        return f"""Based on the candidate's CV, generate a question about their past experience and projects.
+        cover_letter_section = ""
+        if cover_letter_text:
+            cover_letter_section = f"""
+Candidate Cover Letter:
+{cover_letter_text[:1000]}
+
+Reference specific experiences or projects mentioned in the cover letter if relevant.
+"""
+        
+        return f"""Based on the candidate's CV and cover letter (if available), generate a question about their past experience and projects.
 
 Job Description:
 Title: {job_description.get('title', 'N/A')}
@@ -105,14 +140,17 @@ Requirements: {job_description.get('requirements', 'N/A')}
 Candidate CV:
 {cv_text[:2000]}
 
+{cover_letter_section}
+
 {previous_context}
 
 Generate a question that:
-- Asks about specific projects or experiences mentioned in their CV
+- Asks about specific projects or experiences mentioned in their CV or cover letter
 - Validates their claimed responsibilities and achievements
 - Relates to the job requirements
 - Asks for concrete examples (what, how, impact)
-- Is based on information from their CV
+- Cross-references CV and cover letter information
+- Validates claims made in cover letter if relevant
 
 Respond with ONLY the question text, no additional commentary."""
 

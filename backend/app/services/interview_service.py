@@ -193,6 +193,20 @@ class InterviewService:
                     updated_interview = fix_response.data[0]
             
             logger.info("Interview completed", interview_id=str(interview_id), duration=duration_seconds)
+            
+            # Finalize interview report (non-blocking - don't fail interview if report fails)
+            try:
+                from app.services.interview_report_service import InterviewReportService
+                await InterviewReportService.finalize_report(interview_id)
+            except Exception as report_err:
+                logger.warning(
+                    "Failed to finalize interview report",
+                    error=str(report_err),
+                    interview_id=str(interview_id),
+                    exc_info=True
+                )
+                # Continue - interview is still marked as completed
+            
             return updated_interview
             
         except (NotFoundError, ForbiddenError):

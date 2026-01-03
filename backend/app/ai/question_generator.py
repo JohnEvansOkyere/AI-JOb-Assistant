@@ -57,7 +57,8 @@ class QuestionGenerator:
         recruiter_id: Optional[UUID] = None,
         interview_id: Optional[UUID] = None,
         job_description_id: Optional[UUID] = None,
-        candidate_id: Optional[UUID] = None
+        candidate_id: Optional[UUID] = None,
+        cover_letter_text: Optional[str] = None
     ) -> str:
         """
         Generate warmup question
@@ -74,7 +75,7 @@ class QuestionGenerator:
             Generated question text
         """
         try:
-            prompt = self.prompts.get_warmup_prompt(job_description, cv_text)
+            prompt = self.prompts.get_warmup_prompt(job_description, cv_text, cover_letter_text)
             provider, context = self._get_provider_for_call(
                 recruiter_id=recruiter_id,
                 interview_id=interview_id,
@@ -113,7 +114,8 @@ class QuestionGenerator:
         recruiter_id: Optional[UUID] = None,
         interview_id: Optional[UUID] = None,
         job_description_id: Optional[UUID] = None,
-        candidate_id: Optional[UUID] = None
+        candidate_id: Optional[UUID] = None,
+        cover_letter_text: Optional[str] = None
     ) -> str:
         """
         Generate skill assessment question
@@ -136,7 +138,8 @@ class QuestionGenerator:
                 job_description,
                 cv_text,
                 skill_category,
-                previous_questions or []
+                previous_questions or [],
+                cover_letter_text
             )
             provider, context = self._get_provider_for_call(
                 recruiter_id=recruiter_id,
@@ -175,7 +178,8 @@ class QuestionGenerator:
         recruiter_id: Optional[UUID] = None,
         interview_id: Optional[UUID] = None,
         job_description_id: Optional[UUID] = None,
-        candidate_id: Optional[UUID] = None
+        candidate_id: Optional[UUID] = None,
+        cover_letter_text: Optional[str] = None
     ) -> str:
         """
         Generate experience validation question
@@ -196,7 +200,8 @@ class QuestionGenerator:
             prompt = self.prompts.get_experience_question_prompt(
                 job_description,
                 cv_text,
-                previous_questions or []
+                previous_questions or [],
+                cover_letter_text
             )
             provider, context = self._get_provider_for_call(
                 recruiter_id=recruiter_id,

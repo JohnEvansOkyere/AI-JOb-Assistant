@@ -134,9 +134,9 @@ class Settings(BaseSettings):
     
     # Email Service (Resend + SMTP)
     resend_api_key: Optional[str] = None
-    email_from_address: str = "noreply@example.com"
-    email_from_name: str = "AI Interview Platform"
-    email_reply_to: Optional[str] = None
+    email_from_address: str = "hello@veloxarecruit.com"
+    email_from_name: str = "Veloxa Recruit"
+    email_reply_to: Optional[str] = None  # Defaults to email_from_address if not set
     
     # SMTP Configuration (for Gmail and other SMTP servers)
     smtp_enabled: bool = False

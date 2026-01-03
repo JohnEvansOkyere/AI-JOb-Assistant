@@ -286,24 +286,24 @@ async def get_interview_replay(
             for q in questions:
                 q_id = q["id"]
                 response = responses.get(q_id, {})
-            
-            # Get audio URL if audio path exists (use signed URL for private buckets)
-            audio_url = None
-            if response.get("response_audio_path"):
-                from app.services.storage_service import StorageService
-                # Generate signed URL (valid for 1 hour) - works with both public and private buckets
-                audio_url = StorageService.get_audio_signed_url(response["response_audio_path"], expires_in=3600)
-            
-            qa_items.append({
-                "question_id": q_id,
-                "question_text": q.get("question_text", ""),
-                "question_order": q.get("order_index", 0) + 1,  # 1-based for display
-                "question_type": q.get("question_type"),
-                "response_text": response.get("response_text", ""),
-                "response_audio_path": response.get("response_audio_path"),
-                "response_audio_url": audio_url,
-                "response_created_at": response.get("created_at"),
-            })
+                
+                # Get audio URL if audio path exists (use signed URL for private buckets)
+                audio_url = None
+                if response.get("response_audio_path"):
+                    from app.services.storage_service import StorageService
+                    # Generate signed URL (valid for 1 hour) - works with both public and private buckets
+                    audio_url = StorageService.get_audio_signed_url(response["response_audio_path"], expires_in=3600)
+                
+                qa_items.append({
+                    "question_id": q_id,
+                    "question_text": q.get("question_text", ""),
+                    "question_order": q.get("order_index", 0) + 1,  # 1-based for display
+                    "question_type": q.get("question_type"),
+                    "response_text": response.get("response_text", ""),
+                    "response_audio_path": response.get("response_audio_path"),
+                    "response_audio_url": audio_url,
+                    "response_created_at": response.get("created_at"),
+                })
         
         replay_data = {
             "interview_id": str(interview_id),

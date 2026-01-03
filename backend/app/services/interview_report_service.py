@@ -5,9 +5,10 @@ Aggregates per-question analyses into an interview-level report.
 
 from __future__ import annotations
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from uuid import UUID
 from decimal import Decimal
+from datetime import datetime
 
 from app.models.interview_report import InterviewReportCreate, InterviewReportUpdate
 from app.database import db
@@ -49,6 +50,7 @@ class InterviewReportService:
     async def upsert_from_analysis(
         interview_id: UUID,
         analysis: Dict[str, Any],
+        question_id: Optional[UUID] = None,
     ) -> Dict[str, Any]:
         """
         Upsert an interview_report row using the latest per-question analysis.
@@ -85,6 +87,24 @@ class InterviewReportService:
 
             if existing:
                 # Merge into existing report
+                existing_full_report = existing.get("full_report") or {}
+                analysis_history = existing_full_report.get("analysis_history", [])
+                
+                # Add current analysis to history (limit to last 20 analyses to avoid bloat)
+                analysis_entry = {
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "question_id": str(question_id) if question_id else None,
+                    "quality": quality,
+                    "alignment_score": float(alignment_score) if alignment_score else None,
+                    "strengths": strengths,
+                    "weaknesses": weaknesses,
+                    "red_flags": red_flags,
+                    "analysis": analysis,
+                }
+                analysis_history.append(analysis_entry)
+                if len(analysis_history) > 20:
+                    analysis_history = analysis_history[-20:]  # Keep last 20
+                
                 update_data = InterviewReportUpdate(
                     strengths=InterviewReportService._merge_lists(
                         existing.get("strengths"), strengths
@@ -96,8 +116,9 @@ class InterviewReportService:
                         existing.get("red_flags"), red_flags
                     ),
                     full_report={
-                        **(existing.get("full_report") or {}),
+                        **existing_full_report,
                         "latest_analysis": analysis,
+                        "analysis_history": analysis_history,
                     },
                 )
 
@@ -172,7 +193,19 @@ class InterviewReportService:
                     experience_level=exp_level,
                     hiring_recommendation=hiring_rec,
                     recommendation_justification=justification,
-                    full_report={"latest_analysis": analysis},
+                    full_report={
+                        "latest_analysis": analysis,
+                        "analysis_history": [{
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "question_id": str(question_id) if question_id else None,
+                            "quality": quality,
+                            "alignment_score": float(alignment_score) if alignment_score else None,
+                            "strengths": strengths,
+                            "weaknesses": weaknesses,
+                            "red_flags": red_flags,
+                            "analysis": analysis,
+                        }],
+                    },
                 )
                 resp = (
                     db.service_client.table("interview_reports")
@@ -207,6 +240,416 @@ class InterviewReportService:
         if quality == "weak":
             return current or "neutral"
         return current or "neutral"
+    
+    @staticmethod
+    def _get_question_weight(question_type: str, order_index: int) -> Decimal:
+        """
+        Get weight for a question based on type and order.
+        
+        Weights:
+        - Core questions (skill_validation, experience, gap_probing, behavioral, motivation): 2.0
+        - Follow-up questions: 1.0
+        - Warmup: 0.5 (minimal impact on final score)
+        """
+        if question_type == "warmup" or order_index == 0:
+            return Decimal("0.5")
+        elif question_type in ["skill_validation", "experience", "gap_probing", "behavioral", "motivation", "skill", "experience"]:
+            return Decimal("2.0")
+        else:
+            # Follow-ups or other types
+            return Decimal("1.0")
+    
+    @staticmethod
+    async def _load_all_question_analyses(interview_id: UUID) -> List[Dict[str, Any]]:
+        """Load all questions, responses, and their analyses for the interview."""
+        try:
+            # Load all questions
+            questions_resp = (
+                db.service_client.table("interview_questions")
+                .select("id, question_text, question_type, order_index, skill_category")
+                .eq("interview_id", str(interview_id))
+                .order("order_index")
+                .execute()
+            )
+            questions = {q["id"]: q for q in (questions_resp.data or [])}
+            
+            # Load all responses
+            responses_resp = (
+                db.service_client.table("interview_responses")
+                .select("question_id, response_text, created_at")
+                .eq("interview_id", str(interview_id))
+                .order("created_at")
+                .execute()
+            )
+            
+            # Load report to get analysis history
+            report_resp = (
+                db.service_client.table("interview_reports")
+                .select("full_report")
+                .eq("interview_id", str(interview_id))
+                .execute()
+            )
+            full_report = report_resp.data[0].get("full_report", {}) if report_resp.data else {}
+            analysis_history = full_report.get("analysis_history", [])
+            
+            # Build question-analysis pairs
+            analyses = []
+            for resp in (responses_resp.data or []):
+                q_id = resp["question_id"]
+                question = questions.get(q_id, {})
+                
+                # Try to find analysis for this question from history
+                # Match by question_id first, then fallback to timestamp proximity
+                analysis = None
+                response_time = resp.get("created_at")
+                
+                if analysis_history:
+                    # First try to match by question_id
+                    for hist_entry in reversed(analysis_history):  # Start from most recent
+                        if hist_entry.get("question_id") == str(q_id):
+                            analysis = hist_entry.get("analysis", {})
+                            break
+                    
+                    # If no match by question_id, try to match by response time proximity
+                    if not analysis and response_time:
+                        # Find analysis entry closest to response time
+                        for hist_entry in reversed(analysis_history):
+                            hist_analysis = hist_entry.get("analysis", {})
+                            # If analysis has data, use it
+                            if hist_analysis and (hist_analysis.get("strengths") or hist_analysis.get("weaknesses") or hist_analysis.get("quality")):
+                                analysis = hist_analysis
+                                break
+                
+                # If no analysis found, create a basic one from response quality indicators
+                if not analysis:
+                    # Try to infer quality from response length and content
+                    response_text = resp.get("response_text", "")
+                    if len(response_text) < 50:
+                        quality = "weak"
+                    elif len(response_text) > 200:
+                        quality = "strong"
+                    else:
+                        quality = "adequate"
+                    
+                    analysis = {
+                        "quality": quality,
+                        "response_quality": quality,
+                        "alignment_score": None,
+                        "strengths": [],
+                        "weaknesses": [],
+                        "red_flags": [],
+                    }
+                
+                analyses.append({
+                    "question_id": q_id,
+                    "question": question.get("question_text", ""),
+                    "question_type": question.get("question_type", ""),
+                    "order_index": question.get("order_index", 0),
+                    "skill_category": question.get("skill_category"),
+                    "response_text": resp.get("response_text", ""),
+                    "analysis": analysis,
+                    "created_at": resp.get("created_at"),
+                })
+            
+            return analyses
+        except Exception as e:
+            logger.error("Error loading question analyses", error=str(e), interview_id=str(interview_id))
+            return []
+    
+    @staticmethod
+    async def _calculate_weighted_skill_match_score(interview_id: UUID) -> Decimal | None:
+        """
+        Calculate weighted skill match score based on all responses.
+        
+        Formula: Σ(score × weight) / Σ(weights)
+        """
+        try:
+            analyses = await InterviewReportService._load_all_question_analyses(interview_id)
+            
+            if not analyses:
+                return None
+            
+            total_weighted_score = Decimal("0")
+            total_weight = Decimal("0")
+            
+            for item in analyses:
+                analysis = item.get("analysis", {})
+                alignment_score = InterviewReportService._to_decimal(
+                    analysis.get("alignment_score") or analysis.get("relevance_score")
+                )
+                
+                if alignment_score is None:
+                    continue
+                
+                weight = InterviewReportService._get_question_weight(
+                    item.get("question_type", ""),
+                    item.get("order_index", 0)
+                )
+                
+                total_weighted_score += alignment_score * weight
+                total_weight += weight
+            
+            if total_weight == 0:
+                return None
+            
+            return total_weighted_score / total_weight
+        except Exception as e:
+            logger.error("Error calculating weighted skill match score", error=str(e), interview_id=str(interview_id))
+            return None
+    
+    @staticmethod
+    async def _derive_comprehensive_recommendation(interview_id: UUID) -> str:
+        """
+        Generate recommendation based on ALL responses, not just the last one.
+        
+        Logic:
+        - If any red flags: no_hire
+        - Count strong/adequate/weak responses weighted by question priority
+        - If >70% strong responses: strong_hire
+        - If >50% strong+adequate responses: hire
+        - If >50% weak responses: maybe/no_hire (depending on severity)
+        """
+        try:
+            analyses = await InterviewReportService._load_all_question_analyses(interview_id)
+            
+            if not analyses:
+                return "neutral"
+            
+            # Check for red flags first
+            all_red_flags = []
+            strong_count = Decimal("0")
+            adequate_count = Decimal("0")
+            weak_count = Decimal("0")
+            total_weight = Decimal("0")
+            
+            for item in analyses:
+                analysis = item.get("analysis", {})
+                quality = (analysis.get("quality") or analysis.get("response_quality", "")).lower()
+                red_flags = analysis.get("red_flags", [])
+                
+                if red_flags:
+                    all_red_flags.extend(red_flags)
+                
+                weight = InterviewReportService._get_question_weight(
+                    item.get("question_type", ""),
+                    item.get("order_index", 0)
+                )
+                
+                # Skip warmup questions from recommendation calculation
+                if item.get("question_type") == "warmup" or item.get("order_index", 0) == 0:
+                    continue
+                
+                total_weight += weight
+                
+                if quality == "strong":
+                    strong_count += weight
+                elif quality == "weak":
+                    weak_count += weight
+                else:
+                    adequate_count += weight
+            
+            # Red flags override everything
+            if all_red_flags:
+                return "no_hire"
+            
+            if total_weight == 0:
+                return "neutral"
+            
+            # Calculate percentages
+            strong_pct = (strong_count / total_weight) * 100
+            weak_pct = (weak_count / total_weight) * 100
+            adequate_pct = (adequate_count / total_weight) * 100
+            
+            # Decision logic
+            if strong_pct >= 70:
+                return "strong_hire"
+            elif strong_pct + adequate_pct >= 70:
+                return "hire"
+            elif weak_pct >= 50:
+                return "maybe"
+            elif strong_pct >= 40:
+                return "hire"
+            else:
+                return "neutral"
+                
+        except Exception as e:
+            logger.error("Error deriving comprehensive recommendation", error=str(e), interview_id=str(interview_id))
+            return "neutral"
+    
+    @staticmethod
+    async def _aggregate_all_analysis_data(interview_id: UUID) -> Dict[str, Any]:
+        """Aggregate all strengths, weaknesses, and red flags from all responses."""
+        try:
+            analyses = await InterviewReportService._load_all_question_analyses(interview_id)
+            
+            all_strengths = []
+            all_weaknesses = []
+            all_red_flags = []
+            analysis_history = []
+            
+            for item in analyses:
+                analysis = item.get("analysis", {})
+                
+                # Collect strengths
+                strengths = analysis.get("strengths", [])
+                if strengths:
+                    all_strengths.extend(strengths)
+                
+                # Collect weaknesses
+                weaknesses = analysis.get("weaknesses", [])
+                if weaknesses:
+                    all_weaknesses.extend(weaknesses)
+                
+                # Collect red flags
+                red_flags = analysis.get("red_flags", [])
+                if red_flags:
+                    all_red_flags.extend(red_flags)
+                
+                # Store analysis history
+                if analysis:
+                    analysis_history.append({
+                        "question_id": item.get("question_id"),
+                        "question_type": item.get("question_type"),
+                        "order_index": item.get("order_index"),
+                        "quality": analysis.get("quality") or analysis.get("response_quality"),
+                        "alignment_score": analysis.get("alignment_score") or analysis.get("relevance_score"),
+                        "strengths": strengths,
+                        "weaknesses": weaknesses,
+                        "red_flags": red_flags,
+                    })
+            
+            # Deduplicate and merge
+            return {
+                "strengths": InterviewReportService._merge_lists(None, all_strengths) or [],
+                "weaknesses": InterviewReportService._merge_lists(None, all_weaknesses) or [],
+                "red_flags": InterviewReportService._merge_lists(None, all_red_flags) or [],
+                "analysis_history": analysis_history,
+                "total_questions": len(analyses),
+                "questions_with_responses": len([a for a in analyses if a.get("response_text")]),
+            }
+        except Exception as e:
+            logger.error("Error aggregating analysis data", error=str(e), interview_id=str(interview_id))
+            return {
+                "strengths": [],
+                "weaknesses": [],
+                "red_flags": [],
+                "analysis_history": [],
+                "total_questions": 0,
+                "questions_with_responses": 0,
+            }
+    
+    @staticmethod
+    async def finalize_report(interview_id: UUID) -> Dict[str, Any]:
+        """
+        Finalize interview report when interview completes.
+        
+        This method:
+        1. Aggregates all responses and analyses
+        2. Calculates weighted skill_match_score based on all responses
+        3. Generates comprehensive recommendation based on all responses
+        4. Aggregates all strengths/weaknesses/red_flags
+        5. Updates the report with final scores and recommendation
+        
+        Args:
+            interview_id: Interview ID to finalize
+            
+        Returns:
+            Updated report data
+        """
+        try:
+            logger.info("Finalizing interview report", interview_id=str(interview_id))
+            
+            # Check if report exists
+            report_resp = (
+                db.service_client.table("interview_reports")
+                .select("*")
+                .eq("interview_id", str(interview_id))
+                .execute()
+            )
+            
+            if not report_resp.data:
+                logger.warning("No report found to finalize, creating new one", interview_id=str(interview_id))
+                # Create basic report first if it doesn't exist
+                # This shouldn't happen normally, but handle gracefully
+                return {}
+            
+            existing = report_resp.data[0]
+            
+            # Aggregate all analysis data
+            aggregated = await InterviewReportService._aggregate_all_analysis_data(interview_id)
+            
+            # Calculate weighted skill match score
+            weighted_score = await InterviewReportService._calculate_weighted_skill_match_score(interview_id)
+            
+            # Derive comprehensive recommendation
+            comprehensive_rec = await InterviewReportService._derive_comprehensive_recommendation(interview_id)
+            
+            # Update report
+            update_data = InterviewReportUpdate(
+                strengths=aggregated["strengths"] or None,
+                weaknesses=aggregated["weaknesses"] or None,
+                red_flags=aggregated["red_flags"] or None,
+                skill_match_score=weighted_score,
+                hiring_recommendation=comprehensive_rec,
+            )
+            
+            # Update full_report with analysis history
+            existing_full_report = existing.get("full_report", {})
+            existing_full_report["analysis_history"] = aggregated["analysis_history"]
+            existing_full_report["finalized_at"] = str(datetime.utcnow().isoformat())
+            existing_full_report["aggregation_metadata"] = {
+                "total_questions": aggregated["total_questions"],
+                "questions_with_responses": aggregated["questions_with_responses"],
+                "score_calculation_method": "weighted_average",
+            }
+            update_data.full_report = existing_full_report
+            
+            # Generate comprehensive recommendation justification
+            update_data.recommendation_justification = (
+                InterviewReportService._generate_recommendation_justification(
+                    comprehensive_rec,
+                    weighted_score,
+                    aggregated["strengths"],
+                    aggregated["weaknesses"],
+                    aggregated["red_flags"],
+                )
+            )
+            
+            # Ensure experience level is set
+            if not existing.get("experience_level"):
+                exp_level = await InterviewReportService._determine_experience_level(interview_id)
+                if exp_level:
+                    update_data.experience_level = exp_level
+            
+            # Update the report
+            resp = (
+                db.service_client.table("interview_reports")
+                .update(update_data.model_dump(mode="json", exclude_unset=True))
+                .eq("interview_id", str(interview_id))
+                .execute()
+            )
+            
+            updated_report = (resp.data or [existing])[0]
+            
+            logger.info(
+                "Interview report finalized",
+                interview_id=str(interview_id),
+                skill_match_score=float(weighted_score) if weighted_score else None,
+                hiring_recommendation=comprehensive_rec,
+                total_questions=aggregated["total_questions"],
+            )
+            
+            return updated_report
+            
+        except Exception as e:
+            logger.error(
+                "Error finalizing interview report",
+                error=str(e),
+                interview_id=str(interview_id),
+                exc_info=True
+            )
+            # Don't fail interview completion if report finalization fails
+            return {}
 
     @staticmethod
     def _generate_recommendation_justification(

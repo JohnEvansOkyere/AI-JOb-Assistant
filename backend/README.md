@@ -70,5 +70,6 @@ uvicorn app.main:app --reload
 - **[Email Setup Guide](../docs/EMAIL_SETUP_GUIDE.md)** - Complete guide for setting up Resend email service
 - **[Email Automation Reference](../docs/EMAIL_AUTOMATION_REFERENCE.md)** - Reference for all automated emails sent by the platform
 - **[Email Configuration Summary](../docs/EMAIL_CONFIGURATION_SUMMARY.md)** - Summary of email configuration changes
+- **[Email Verification Implementation](../docs/EMAIL_VERIFICATION_IMPLEMENTATION.md)** - Custom OTP email verification system
 
 For more documentation, see the main [docs](../docs/) directory.

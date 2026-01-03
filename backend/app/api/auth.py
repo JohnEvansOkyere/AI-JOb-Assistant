@@ -3,12 +3,12 @@ Authentication API Routes
 Handles user authentication and registration
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Body
 from app.schemas.auth import Token, UserLogin, UserRegister
 from app.schemas.common import Response
 from app.models.user import User
 from app.database import db
-from app.utils.auth import create_access_token, get_current_user
+from app.utils.auth import create_access_token, get_current_user, get_current_user_id_unverified
 from app.utils.rate_limit import rate_limit_auth
 from app.services.usage_limit_checker import UsageLimitChecker
 from app.config_plans import SubscriptionPlanService
@@ -50,6 +50,7 @@ async def register(request: Request, user_data: UserRegister):
         user_id = auth_response.user.id
         
         # Create user profile in public.users table
+        # Use service_client to bypass RLS during registration (server-side operation)
         user_profile = {
             "id": user_id,
             "email": user_data.email,
@@ -57,7 +58,7 @@ async def register(request: Request, user_data: UserRegister):
             "company_name": user_data.company_name
         }
         
-        response = db.client.table("users").insert(user_profile).execute()
+        response = db.service_client.table("users").insert(user_profile).execute()
         
         if not response.data:
             raise HTTPException(
@@ -112,15 +113,32 @@ async def register(request: Request, user_data: UserRegister):
         # Default templates will be created lazily when user first accesses templates
         # This ensures registration is fast and templates are created when needed
         
-        # Return success - Supabase handles email confirmation automatically
-        message = "User registered successfully. Please check your email to confirm your account."
+        # Generate and send email verification code
+        try:
+            from app.services.email_verification_service import EmailVerificationService
+            verification_result = await EmailVerificationService.send_verification_code(
+                user_id=user_id,
+                email=user_data.email,
+                full_name=user_data.full_name
+            )
+            logger.info("Verification code sent", user_id=user_id, email=user_data.email)
+        except Exception as e:
+            # Log error but don't fail registration - user can request code later
+            logger.error("Failed to send verification code during registration", error=str(e), user_id=user_id)
+        
+        # Return success - user needs to verify email before accessing the site
+        message = "Registration successful! Please check your email for a verification code to complete your account setup."
         if subscription_plan != "free":
-            message += f" Your {subscription_plan} plan trial has started."
+            message += f" Your {subscription_plan} plan trial will start after email verification."
+        
+        # Don't include sensitive data in response
+        user_data_response = response.data[0].copy()
+        user_data_response["email_verified"] = False  # Indicate email not verified yet
         
         return Response(
             success=True,
             message=message,
-            data=response.data[0]
+            data=user_data_response
         )
         
     except HTTPException:
@@ -183,6 +201,18 @@ async def login(request: Request, credentials: UserLogin):
                 detail="Invalid credentials"
             )
         
+        # Check if email is verified
+        from app.services.email_verification_service import EmailVerificationService
+        from uuid import UUID
+        user_id = UUID(auth_response.user.id)
+        
+        is_verified = EmailVerificationService.is_email_verified(user_id)
+        if not is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Please verify your email address before logging in. Check your email for a verification code."
+            )
+        
         # Create access token
         access_token_expires = timedelta(hours=24)
         access_token = create_access_token(
@@ -203,6 +233,100 @@ async def login(request: Request, credentials: UserLogin):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"
+        )
+
+
+@router.post("/verify-email", response_model=Response[dict])
+@rate_limit_auth()  # Limit verification attempts
+async def verify_email(
+    request: Request,
+    code: str = Body(..., description="6-digit verification code"),
+    current_user: dict = Depends(get_current_user)  # Allow unverified users to access this endpoint
+):
+    """
+    Verify email address with verification code
+    
+    Args:
+        code: 6-digit verification code from email
+        current_user: Current authenticated user
+        
+    Returns:
+        Verification result
+    """
+    try:
+        from app.services.email_verification_service import EmailVerificationService
+        from uuid import UUID
+        
+        user_id = UUID(current_user["id"])
+        
+        result = await EmailVerificationService.verify_code(user_id, code)
+        
+        if result["success"]:
+            logger.info("Email verified", user_id=str(user_id))
+            return Response(
+                success=True,
+                message=result.get("message", "Email verified successfully"),
+                data=result
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result.get("error", "Verification failed")
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error verifying email", error=str(e), user_id=current_user.get("id"))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to verify email. Please try again."
+        )
+
+
+@router.post("/resend-verification", response_model=Response[dict])
+@rate_limit_auth()  # Limit resend attempts
+async def resend_verification(
+    request: Request,
+    current_user: dict = Depends(get_current_user)  # Allow unverified users to resend
+):
+    """
+    Resend email verification code
+    
+    Args:
+        current_user: Current authenticated user
+        
+    Returns:
+        Resend result
+    """
+    try:
+        from app.services.email_verification_service import EmailVerificationService
+        from uuid import UUID
+        
+        user_id = UUID(current_user["id"])
+        
+        result = await EmailVerificationService.resend_verification_code(user_id)
+        
+        if result["success"]:
+            logger.info("Verification code resent", user_id=str(user_id))
+            return Response(
+                success=True,
+                message=result.get("message", "Verification code sent successfully"),
+                data=result
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result.get("error", "Failed to resend verification code")
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error resending verification code", error=str(e), user_id=current_user.get("id"))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to resend verification code. Please try again."
         )
 
 

@@ -74,10 +74,20 @@ async def get_current_user(
     
     # Verify user exists in Supabase
     try:
-        response = db.client.table("users").select("*").eq("id", user_id).execute()
+        response = db.service_client.table("users").select("*").eq("id", user_id).execute()
         if not response.data:
             raise credentials_exception
         user = response.data[0]
+        
+        # Check if email is verified (for protected routes)
+        # Note: This check can be bypassed for verification endpoints if needed
+        email_verified_at = user.get("email_verified_at")
+        if email_verified_at is None:
+            # Email not verified - but we still return user for verification endpoints
+            # Individual endpoints can check and handle accordingly
+            user["email_verified"] = False
+        else:
+            user["email_verified"] = True
         
         # Add user context to Sentry (non-sensitive info only)
         sentry_sdk.set_user({
@@ -96,6 +106,35 @@ async def get_current_user_id(
 ) -> UUID:
     """
     Get current user ID as UUID
+    Checks email verification by default - use get_current_user_id_unverified() to bypass
+    
+    Args:
+        current_user: Current authenticated user
+    
+    Returns:
+        User ID as UUID
+    
+    Raises:
+        HTTPException: If email is not verified
+    """
+    # Check email verification
+    email_verified = current_user.get("email_verified", False)
+    if not email_verified:
+        logger.warning("Unverified user attempted to access protected route", user_id=current_user.get("id"))
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Please verify your email address before accessing this feature. Check your email for a verification code."
+        )
+    
+    return UUID(current_user["id"])
+
+
+async def get_current_user_id_unverified(
+    current_user: dict = Depends(get_current_user)
+) -> UUID:
+    """
+    Get current user ID as UUID without email verification check
+    Use for verification endpoints that need to work before email is verified
     
     Args:
         current_user: Current authenticated user

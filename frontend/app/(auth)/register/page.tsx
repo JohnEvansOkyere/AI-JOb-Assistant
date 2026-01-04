@@ -11,12 +11,13 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import { verifyEmail, resendVerificationCode } from '@/lib/auth'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import Link from 'next/link'
-import { Sparkles, CheckCircle2 } from 'lucide-react'
+import { Sparkles, CheckCircle2, Mail, RefreshCw } from 'lucide-react'
 
 function RegisterForm() {
   const router = useRouter()
@@ -37,6 +38,11 @@ function RegisterForm() {
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showVerification, setShowVerification] = useState(false)
+  const [verificationCode, setVerificationCode] = useState('')
+  const [verifying, setVerifying] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [verificationMessage, setVerificationMessage] = useState('')
   
   // Update plan when query param changes
   useEffect(() => {
@@ -53,7 +59,13 @@ function RegisterForm() {
     try {
       const result = await register(formData)
       if (result.success) {
-        router.push('/dashboard')
+        if (result.requiresVerification) {
+          // Show verification step
+          setShowVerification(true)
+          setVerificationMessage('We sent a verification code to your email. Please enter it below.')
+        } else {
+          router.push('/dashboard')
+        }
       } else {
         setError(result.error || 'Registration failed')
       }
@@ -61,6 +73,52 @@ function RegisterForm() {
       setError(err.message || 'An error occurred')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleVerify = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setVerificationMessage('')
+    setVerifying(true)
+
+    try {
+      // Verify the code (backend returns access_token automatically)
+      // No need to login first - verification endpoint handles everything
+      const verifyResult = await verifyEmail(verificationCode, formData.email)
+      
+      if (verifyResult.success) {
+        // Token is already stored in localStorage by verifyEmail function
+        // Just redirect to dashboard - user is now logged in!
+        router.push('/dashboard')
+      } else {
+        setError(verifyResult.error || 'Verification failed')
+      }
+    } catch (err: any) {
+      setError(err.message || 'Verification failed. Please try again.')
+    } finally {
+      setVerifying(false)
+    }
+  }
+
+  const handleResendCode = async () => {
+    setError('')
+    setVerificationMessage('')
+    setResending(true)
+
+    try {
+      // Resend verification code using email (no login required)
+      const resendResult = await resendVerificationCode(formData.email)
+      
+      if (resendResult.success) {
+        setVerificationMessage('Verification code resent! Please check your email.')
+      } else {
+        setError(resendResult.error || 'Failed to resend code')
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend verification code')
+    } finally {
+      setResending(false)
     }
   }
 
@@ -102,60 +160,125 @@ function RegisterForm() {
         </div>
 
         <Card>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {error && (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded">
-                {error}
+          {!showVerification ? (
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {error && (
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded">
+                  {error}
+                </div>
+              )}
+
+              <Input
+                label="Full Name"
+                type="text"
+                value={formData.full_name}
+                onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                placeholder="John Doe"
+              />
+
+              <Input
+                label="Company Name"
+                type="text"
+                value={formData.company_name}
+                onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
+                placeholder="Tech Corp"
+              />
+
+              <Input
+                label="Email"
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                required
+                autoComplete="email"
+                placeholder="you@example.com"
+              />
+
+              <Input
+                label="Password"
+                type="password"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                required
+                autoComplete="new-password"
+                placeholder="••••••••"
+                helperText="At least 8 characters"
+              />
+
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                loading={loading}
+                className="w-full bg-turquoise-600 hover:bg-turquoise-700 text-white border-0 shadow-lg hover:shadow-xl transition-all"
+              >
+                Create Account
+              </Button>
+            </form>
+          ) : (
+            <div className="space-y-6">
+              <div className="text-center">
+                <div className="mx-auto w-16 h-16 bg-turquoise-100 dark:bg-turquoise-900/30 rounded-full flex items-center justify-center mb-4">
+                  <Mail className="w-8 h-8 text-turquoise-600 dark:text-turquoise-400" />
+                </div>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Verify Your Email</h2>
+                <p className="text-gray-600 dark:text-gray-400">
+                  We sent a verification code to <strong>{formData.email}</strong>
+                </p>
               </div>
-            )}
 
-            <Input
-              label="Full Name"
-              type="text"
-              value={formData.full_name}
-              onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-              placeholder="John Doe"
-            />
+              {verificationMessage && (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400 px-4 py-3 rounded">
+                  {verificationMessage}
+                </div>
+              )}
 
-            <Input
-              label="Company Name"
-              type="text"
-              value={formData.company_name}
-              onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
-              placeholder="Tech Corp"
-            />
+              {error && (
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded">
+                  {error}
+                </div>
+              )}
 
-            <Input
-              label="Email"
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              required
-              autoComplete="email"
-              placeholder="you@example.com"
-            />
+              <form onSubmit={handleVerify} className="space-y-4">
+                <Input
+                  label="Verification Code"
+                  type="text"
+                  value={verificationCode}
+                  onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="123456"
+                  required
+                  maxLength={6}
+                  className="text-center text-2xl tracking-widest font-mono"
+                  helperText="Enter the 6-digit code from your email"
+                />
 
-            <Input
-              label="Password"
-              type="password"
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              required
-              autoComplete="new-password"
-              placeholder="••••••••"
-              helperText="At least 8 characters"
-            />
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="lg"
+                  loading={verifying}
+                  className="w-full bg-turquoise-600 hover:bg-turquoise-700 text-white border-0 shadow-lg hover:shadow-xl transition-all"
+                >
+                  Verify Email
+                </Button>
+              </form>
 
-            <Button
-              type="submit"
-              variant="primary"
-              size="lg"
-              loading={loading}
-              className="w-full bg-turquoise-600 hover:bg-turquoise-700 text-white border-0 shadow-lg hover:shadow-xl transition-all"
-            >
-              Create Account
-            </Button>
-          </form>
+              <div className="text-center space-y-2">
+                <button
+                  type="button"
+                  onClick={handleResendCode}
+                  disabled={resending}
+                  className="text-sm text-turquoise-600 dark:text-turquoise-400 hover:text-turquoise-700 dark:hover:text-turquoise-300 font-medium flex items-center justify-center gap-2 mx-auto disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${resending ? 'animate-spin' : ''}`} />
+                  {resending ? 'Sending...' : 'Resend Code'}
+                </button>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Didn't receive the email? Check your spam folder or try resending.
+                </p>
+              </div>
+            </div>
+          )}
 
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600 dark:text-gray-400">

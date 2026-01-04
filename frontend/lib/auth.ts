@@ -54,14 +54,81 @@ export async function register(data: RegisterData) {
     const response = await apiClient.post<User>('/auth/register', data)
 
     if (response.success) {
-      // Auto-login after registration
-      return await login({ email: data.email, password: data.password })
+      // Don't auto-login - user needs to verify email first
+      return { success: true, data: response.data, requiresVerification: true }
     }
 
     throw new Error(response.message || 'Registration failed')
   } catch (error: any) {
     console.error('Registration error:', error)
     return { success: false, error: error.message || 'Registration failed' }
+  }
+}
+
+export async function verifyEmail(code: string, email?: string) {
+  try {
+    const token = localStorage.getItem('auth_token')
+    const payload: { code: string; email?: string } = { code }
+    
+    // Include email if provided (for unauthenticated verification)
+    if (email) {
+      payload.email = email
+    }
+    
+    // Try with token if available, otherwise use email
+    if (token) {
+      apiClient.setToken(token)
+    } else if (!email) {
+      throw new Error('Email is required for verification')
+    }
+    
+    const response = await apiClient.post<{ access_token: string; token_type: string }>(
+      '/auth/verify-email',
+      payload
+    )
+
+    if (response.success && response.data) {
+      // Store token and update API client
+      localStorage.setItem('auth_token', response.data.access_token)
+      apiClient.setToken(response.data.access_token)
+      
+      return { success: true, token: response.data.access_token }
+    }
+
+    throw new Error(response.message || 'Verification failed')
+  } catch (error: any) {
+    console.error('Email verification error:', error)
+    return { success: false, error: error.message || 'Verification failed' }
+  }
+}
+
+export async function resendVerificationCode(email?: string) {
+  try {
+    const token = localStorage.getItem('auth_token')
+    const payload: { email?: string } = {}
+    
+    // Include email if provided (for unauthenticated resend)
+    if (email) {
+      payload.email = email
+    }
+    
+    // Try with token if available, otherwise use email
+    if (token) {
+      apiClient.setToken(token)
+    } else if (!email) {
+      throw new Error('Email is required for resending verification code')
+    }
+    
+    const response = await apiClient.post('/auth/resend-verification', payload)
+
+    if (response.success) {
+      return { success: true, message: response.message || 'Verification code sent' }
+    }
+
+    throw new Error(response.message || 'Failed to resend code')
+  } catch (error: any) {
+    console.error('Resend verification error:', error)
+    return { success: false, error: error.message || 'Failed to resend verification code' }
   }
 }
 

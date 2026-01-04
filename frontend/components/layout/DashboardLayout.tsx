@@ -273,11 +273,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
                   {user?.full_name || 'User'}
                 </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user?.email}</p>
               </div>
             </div>
             <div className="space-y-2">
-              <ThemeToggle variant="button" className="w-full" />
               <Button
                 variant="outline"
                 size="sm"

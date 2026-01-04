@@ -4,6 +4,7 @@ Handles user authentication and registration
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Body
+from typing import Optional
 from app.schemas.auth import Token, UserLogin, UserRegister
 from app.schemas.common import Response
 from app.models.user import User
@@ -33,11 +34,24 @@ async def register(request: Request, user_data: UserRegister):
         Created user information
     """
     try:
+        # Check if user already exists in public.users table
+        existing_user = db.service_client.table("users").select("id, email").eq("email", user_data.email).execute()
+        
+        if existing_user.data:
+            # User exists in public.users - already registered
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An account with this email already exists"
+            )
+        
         # Create user in Supabase Auth
-        # Supabase handles email confirmation automatically if enabled
+        # Disable Supabase's email confirmation (we use custom verification)
         auth_response = db.client.auth.sign_up({
             "email": user_data.email,
             "password": user_data.password,
+            "options": {
+                "email_redirect_to": None  # Disable email confirmation redirect
+            }
         })
         
         # Check if user was created successfully
@@ -123,8 +137,32 @@ async def register(request: Request, user_data: UserRegister):
             )
             logger.info("Verification code sent", user_id=user_id, email=user_data.email)
         except Exception as e:
-            # Log error but don't fail registration - user can request code later
-            logger.error("Failed to send verification code during registration", error=str(e), user_id=user_id)
+            # Log detailed error
+            error_message = str(e)
+            logger.error(
+                "Failed to send verification code during registration",
+                error=error_message,
+                user_id=user_id,
+                email=user_data.email,
+                exc_info=True
+            )
+            
+            # Check if it's a migration issue
+            if "migration" in error_message.lower() or "column" in error_message.lower():
+                # Don't fail registration, but log clearly
+                logger.warning(
+                    "Registration completed but email verification requires database migration",
+                    user_id=user_id,
+                    migration_file="backend/migrations/024_add_email_verification.sql"
+                )
+            elif "email service not configured" in error_message.lower() or "resend" in error_message.lower() or "smtp" in error_message.lower():
+                # Email service configuration issue
+                logger.warning(
+                    "Registration completed but email verification requires email service configuration",
+                    user_id=user_id,
+                    hint="Configure RESEND_API_KEY or SMTP settings"
+                )
+            # User can request code later via resend endpoint
         
         # Return success - user needs to verify email before accessing the site
         message = "Registration successful! Please check your email for a verification code to complete your account setup."
@@ -146,14 +184,60 @@ async def register(request: Request, user_data: UserRegister):
         raise
     except Exception as e:
         error_message = str(e)
-        logger.error("Registration error", error=error_message, email=user_data.email)
+        error_type = type(e).__name__
+        logger.error(
+            "Registration error",
+            error=error_message,
+            error_type=error_type,
+            email=user_data.email,
+            exc_info=True
+        )
+        
+        # Check for DNS/network errors first
+        if "name resolution" in error_message.lower() or "temporary failure" in error_message.lower() or "[errno -3]" in error_message.lower():
+            logger.error(
+                "DNS/Network connection error during registration",
+                error=error_message,
+                hint="Check network connection and Supabase URL configuration"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Unable to connect to the server. Please check your network connection and try again."
+            )
+        
+        # Check for connection timeout errors
+        if "timeout" in error_message.lower() or "connection" in error_message.lower():
+            logger.error(
+                "Connection timeout during registration",
+                error=error_message
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Connection timeout. Please try again in a moment."
+            )
         
         # Provide helpful error messages for common issues
-        if "already registered" in error_message.lower() or "user already exists" in error_message.lower() or "already been registered" in error_message.lower():
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="An account with this email already exists"
-            )
+        if "already registered" in error_message.lower() or "user already exists" in error_message.lower() or "already been registered" in error_message.lower() or "email address is already registered" in error_message.lower():
+            # User exists in Supabase Auth (auth.users) - check if it's an orphaned account
+            existing_user_check = db.service_client.table("users").select("id").eq("email", user_data.email).execute()
+            
+            if not existing_user_check.data:
+                # Orphaned account - exists in auth.users but not in public.users
+                logger.warning(
+                    "Orphaned account detected",
+                    email=user_data.email,
+                    hint="User exists in auth.users but not in public.users. Delete from Supabase Dashboard → Authentication → Users"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="An account with this email exists in our authentication system. If you previously deleted your account, it may still exist in our auth system. Please delete it from Supabase Dashboard: Authentication → Users, or contact support."
+                )
+            else:
+                # User exists in both tables - normal case
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="An account with this email already exists"
+                )
         elif "password" in error_message.lower() and ("weak" in error_message.lower() or "requirements" in error_message.lower()):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -210,7 +294,7 @@ async def login(request: Request, credentials: UserLogin):
         if not is_verified:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Please verify your email address before logging in. Check your email for a verification code."
+                detail="Please check your email for confirmation"
             )
         
         # Create access token
@@ -228,12 +312,48 @@ async def login(request: Request, credentials: UserLogin):
             data=Token(access_token=access_token, token_type="bearer")
         )
         
+    except HTTPException:
+        # Re-raise HTTP exceptions (like 403 for unverified email)
+        raise
     except Exception as e:
-        logger.error("Login error", error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials"
+        # Log detailed error information
+        error_message = str(e)
+        error_type = type(e).__name__
+        
+        # Check if it's a Supabase AuthApiError (common case)
+        if hasattr(e, 'message'):
+            error_message = e.message
+        elif hasattr(e, 'args') and len(e.args) > 0:
+            error_message = str(e.args[0])
+        
+        logger.error(
+            "Login error",
+            error=error_message,
+            error_type=error_type,
+            email=credentials.email,
+            exc_info=True
         )
+        
+        # Check for specific Supabase error messages
+        error_lower = error_message.lower()
+        
+        # Supabase might require email confirmation
+        if "email not confirmed" in error_lower or "email_not_confirmed" in error_lower:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Please check your email for confirmation"
+            )
+        elif "invalid" in error_lower and ("credentials" in error_lower or "password" in error_lower or "login" in error_lower):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password"
+            )
+        else:
+            # Generic error for security (don't leak internal details)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid credentials"
+            )
 
 
 @router.post("/verify-email", response_model=Response[dict])
@@ -241,32 +361,75 @@ async def login(request: Request, credentials: UserLogin):
 async def verify_email(
     request: Request,
     code: str = Body(..., description="6-digit verification code"),
-    current_user: dict = Depends(get_current_user)  # Allow unverified users to access this endpoint
+    email: Optional[str] = Body(None, description="User email (required if not authenticated)")
 ):
     """
-    Verify email address with verification code
+    Verify email address with verification code and auto-login user
+    Can be called with or without authentication (if email is provided)
     
     Args:
         code: 6-digit verification code from email
-        current_user: Current authenticated user
+        email: User email (required if not authenticated via token)
         
     Returns:
-        Verification result
+        Verification result with access token (auto-login)
     """
     try:
         from app.services.email_verification_service import EmailVerificationService
         from uuid import UUID
         
-        user_id = UUID(current_user["id"])
+        # Try to get authenticated user first (optional)
+        user_id = None
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            try:
+                token = auth_header.replace("Bearer ", "")
+                from jose import jwt
+                from jose.exceptions import JWTError
+                from app.config import settings
+                payload = jwt.decode(token, settings.secret_key, algorithms=["HS256"])
+                user_id_str = payload.get("sub")
+                if user_id_str:
+                    user_id = UUID(user_id_str)
+            except (JWTError, Exception):
+                pass  # If auth fails, fall back to email lookup
+        
+        # If not authenticated, use email to find user
+        if not user_id:
+            if not email:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Email is required when not authenticated"
+                )
+            # Find user by email
+            user_response = db.service_client.table("users").select("id").eq("email", email).execute()
+            if not user_response.data:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found"
+                )
+            user_id = UUID(user_response.data[0]["id"])
         
         result = await EmailVerificationService.verify_code(user_id, code)
         
         if result["success"]:
             logger.info("Email verified", user_id=str(user_id))
+            
+            # Auto-login: Generate access token for the user
+            access_token_expires = timedelta(hours=24)
+            access_token = create_access_token(
+                data={"sub": str(user_id)},
+                expires_delta=access_token_expires
+            )
+            
             return Response(
                 success=True,
                 message=result.get("message", "Email verified successfully"),
-                data=result
+                data={
+                    **result,
+                    "access_token": access_token,
+                    "token_type": "bearer"
+                }
             )
         else:
             raise HTTPException(
@@ -277,7 +440,81 @@ async def verify_email(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Error verifying email", error=str(e), user_id=current_user.get("id"))
+        logger.error("Error verifying email", error=str(e), email=email)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to verify email. Please try again."
+        )
+
+
+@router.get("/verify-email-link/{token}", response_model=Response[dict])
+async def verify_email_link(
+    request: Request,
+    token: str
+):
+    """
+    Verify email using token from email link and auto-login user (public endpoint, no auth required)
+    
+    Args:
+        token: Verification token from email link
+        
+    Returns:
+        Verification result with access token (auto-login)
+    """
+    try:
+        from app.services.email_verification_service import EmailVerificationService
+        from uuid import UUID
+        
+        result = await EmailVerificationService.verify_by_token(token)
+        
+        if result["success"]:
+            logger.info("Email verified via link", token_preview=token[:10] + "...")
+            
+            # Get user ID from the result or database
+            # The verify_by_token method should return user_id in the result
+            user_id = None
+            if "user_id" in result:
+                user_id = UUID(result["user_id"])
+            else:
+                # Fallback: find user by token (should still exist briefly)
+                user_response = db.service_client.table("users").select("id").eq("email_verification_token", token).execute()
+                if user_response.data:
+                    user_id = UUID(user_response.data[0]["id"])
+            
+            if user_id:
+                # Auto-login: Generate access token for the user
+                access_token_expires = timedelta(hours=24)
+                access_token = create_access_token(
+                    data={"sub": str(user_id)},
+                    expires_delta=access_token_expires
+                )
+                
+                return Response(
+                    success=True,
+                    message=result.get("message", "Email verified successfully"),
+                    data={
+                        **result,
+                        "access_token": access_token,
+                        "token_type": "bearer"
+                    }
+                )
+            else:
+                # User verified but couldn't get user_id (shouldn't happen)
+                return Response(
+                    success=True,
+                    message=result.get("message", "Email verified successfully"),
+                    data=result
+                )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result.get("error", "Verification failed")
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error verifying email via link", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to verify email. Please try again."
